@@ -142,6 +142,52 @@ class SecondaryBoardTests(unittest.TestCase):
         self.assertEqual(parsed["listings"][0]["employment_type_raw"], "Full Time")
         self.assertEqual(len(parsed["listings"]), 1)
 
+    def test_blank_publisher_title_preserves_the_whole_mixed_page_and_continuation(self):
+        url, next_url = board_page_url("tanqeeb"), board_page_url("tanqeeb", 2)
+        for blank_model in ["Full Time", "Unknown", "Contract"]:
+            with self.subTest(blank_model=blank_model):
+                body = tanqeeb_page(model="-1", next_url=next_url)
+                cards = []
+                for offset in range(20):
+                    native = str(100001 + offset)
+                    title = " \n&nbsp;\t " if offset == 5 else f"Constructed role {offset}"
+                    model = blank_model if offset == 5 else ["Part Time", "Full Time"][offset % 2]
+                    cards.append(
+                        f'<article data-job-id="{native}" data-job-type="{model}" data-job-closed="0">'
+                        f'<h2><a href="/jobs-in-egypt/all/jobs/0{native}.html">{title}</a></h2>'
+                        '<span class="search-job-company-name">Constructed company</span>'
+                        '<span class="search-job-date">Yesterday</span>'
+                        '<span class="search-job-workplace-location">Egypt</span></article>'
+                    )
+                start, end = body.index("<article"), body.index("</article>") + len("</article>")
+                body = body[:start] + "".join(cards) + body[end:]
+                parsed = parse_page("tanqeeb", body, url)
+                self.assertEqual([r["id"] for r in parsed["listings"]], [str(100001 + i) for i in range(20)])
+                blank = parsed["listings"][5]
+                self.assertEqual(blank["title"], "")
+                self.assertEqual(blank["title_status"], "publisher_blank")
+                self.assertEqual(blank["employment_type_raw"], blank_model)
+                self.assertEqual(blank["company"], "Constructed company")
+                self.assertEqual(blank["source_date_raw"], "Yesterday")
+                self.assertEqual(blank["location"], "Egypt")
+                self.assertEqual(parsed["observed_next_control_href"], next_url)
+                self.assertFalse(parsed["native_partition_pagination_verified"])
+                self.assertTrue(all("title_status" not in r for i, r in enumerate(parsed["listings"]) if i != 5))
+
+    def test_blank_title_does_not_relax_native_link_or_identity_checks(self):
+        body = tanqeeb_page(title=" \n&nbsp;\t ")
+        anchor = '<h2><a href="/jobs-in-egypt/all/jobs/0100001.html"> \n&nbsp;\t </a></h2>'
+        for wrong in [
+            body.replace(anchor, "<h2></h2>"),
+            body.replace(anchor, anchor + anchor),
+            body.replace('href="/jobs-in-egypt/all/jobs/0100001.html"', 'href=""'),
+            body.replace('data-job-id="100001"', 'data-job-id="100002"'),
+            body.replace('data-job-id="100001"', 'data-job-id="invalid"'),
+            body.replace('href="/jobs-in-egypt/all/jobs/0100001.html"', 'href="https://foreign.example/0100001.html"'),
+        ]:
+            with self.subTest(body=wrong), self.assertRaises(ValueError):
+                parse_page("tanqeeb", wrong, board_page_url("tanqeeb"))
+
     def test_native_next_scope_and_identity_must_match(self):
         first = board_page_url("tanqeeb")
         for wrong in [board_page_url("tanqeeb", 2).replace("country=213", "country=113"), first]:

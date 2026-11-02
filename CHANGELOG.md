@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.33 — 2026-11-02
+
+- Preserve a Tanqeeb record whose publisher left its actual title anchor blank,
+  retaining its native ID, canonical URL, model, dates and page continuation.
+  The title remains empty with `title_status: publisher_blank`; no label is
+  invented and no neighbouring records are discarded.
+- Missing or ambiguous job links, malformed IDs and cross-source/ID mismatches
+  still fail. Source metadata remains separate from candidate suitability.
+- Python adapters advance to 0.3.8. Browser runner stays 0.1.3 and the catalogue
+  remains 100 read-only tools and 101 source entries.
+
 ## 0.4.32 — 2026-11-02
 
 - Resume a late-committed Tanqeeb native Next after an invocation budget ends,

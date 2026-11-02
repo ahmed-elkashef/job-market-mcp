@@ -1,6 +1,12 @@
 # Job Market MCP
 
-Current browser continuation correction: v0.4.32 safely resumes an immediately
+Current parser correction: v0.4.33 preserves a Tanqeeb listing with an explicitly
+blank publisher title when its native ID and unique canonical job link are
+valid. Its empty title is marked `publisher_blank`, and every other record,
+model, date and native continuation is retained. Malformed identities still
+fail. Python adapters are 0.3.8; browser runner stays 0.1.3.
+
+The v0.4.32 browser continuation correction safely resumes an immediately
 following Tanqeeb page when native navigation commits just beyond an invocation
 budget. The exact saved observed Next href, source page, new IDs and repeated
 DOM membership checks are required; no offset is guessed or page skipped.

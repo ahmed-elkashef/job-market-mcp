@@ -285,18 +285,23 @@ def parse_page(source, body, url):
                 not native_id
                 or not native_id.isdigit()
                 or len(anchors) != 1
-                or not _text(anchors[0])
             ):
-                raise ValueError("Tanqeeb card lacks its native ID/title/link")
+                raise ValueError("Tanqeeb card lacks its native ID or unique job link")
             href = urljoin(url, anchors[0].get("href"))
             if source_id(source, href) != str(int(native_id)):
                 raise ValueError("Tanqeeb card identity differs from canonical URL")
+            # A publisher can leave the actual title anchor blank while its
+            # native identity, work model and continuation remain valid. Keep
+            # that sparse record instead of losing the entire source page.
+            # Missing/ambiguous anchors and malformed identities still fail.
+            title = _text(anchors[0])
             closed = article.get("data-job-closed")
             listings.append(
                 {
                     "id": str(int(native_id)),
                     "url": href,
-                    "title": _text(anchors[0]),
+                    "title": title,
+                    **({"title_status": "publisher_blank"} if not title else {}),
                     "card_text": _text(article),
                     "employment_type_raw": article.get("data-job-type"),
                     "native_closed_raw": closed,

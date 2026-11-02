@@ -8,7 +8,7 @@
  */
 import { captureEgyptBoardDOM } from './browser-extract.mjs';
 
-export const BROWSER_RUNNER_VERSION = '0.1.2';
+export const BROWSER_RUNNER_VERSION = '0.1.3';
 const TANQEEB_MODELS = {
   part_time: { value:'2', label:'Part Time' },
   internship: { value:'5', label:'Internship' },
@@ -404,16 +404,24 @@ export async function runBoardCapture({tab,sink,source,workModel='part_time',max
   }
   if (listingStopped(status)) return report(status.capture_complete || status.done ? 'capture_complete' : 'metadata_phase_complete',counts,{continuation:continuationOf(status)});
 
-  // Reuse only the actual live native checkpoint. URL restoration alone never
-  // reconstructs Tanqeeb filter state; a reset starts native replay at the seed.
+  // Reuse the actual live checkpoint, or the exact observed Tanqeeb successor
+  // after a navigation committed just beyond the previous invocation budget.
+  // URL restoration alone never reconstructs native filter state.
   if (cursor) {
     try {
       const candidate=await tab.playwright.evaluate(inspectBoardDOM,{source});
       candidate.url=publicURL(source,candidate.url,'page',workModel);
-      if (!membership(candidate,source,workModel) && ((cursor.native_page_number && candidate.native_page_number===cursor.native_page_number) || (!cursor.native_page_number && candidate.url===cursor.url))) {
-        const result=await settled(tab,source,workModel,deadline,null,candidate.native_page_number);
+      const samePage=(cursor.native_page_number && candidate.native_page_number===cursor.native_page_number) || (!cursor.native_page_number && candidate.url===cursor.url);
+      const observedNext=cursor.source_continuation?.observed_next_control_href;
+      const lateSuccessor=source==='tanqeeb' && Number.isSafeInteger(cursor.native_page_number) &&
+        candidate.native_page_number===cursor.native_page_number+1 && typeof observedNext==='string' &&
+        candidate.url===publicURL(source,observedNext,'page',workModel) &&
+        candidate.stable_ids.some(id=>!(cursor.stable_ids || []).includes(id));
+      if (!membership(candidate,source,workModel) && (samePage || lateSuccessor)) {
+        const result=await settled(tab,source,workModel,deadline,lateSuccessor ? cursor : null,candidate.native_page_number);
         if (!result.reason) {
           state=result.state; needsInitialization=false;
+          if (lateSuccessor) replaying=false;
         }
       }
     } catch { /* Safe source reset below, never inspect account/foreign pages. */ }

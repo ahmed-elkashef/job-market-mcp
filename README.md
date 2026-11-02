@@ -1,5 +1,11 @@
 # Job Market MCP
 
+Current browser continuation correction: v0.4.32 safely resumes an immediately
+following Tanqeeb page when native navigation commits just beyond an invocation
+budget. The exact saved observed Next href, source page, new IDs and repeated
+DOM membership checks are required; no offset is guessed or page skipped.
+Browser runner is 0.1.3; Python stays 0.3.7.
+
 Current browser correction: v0.4.31 awaits Tanqeeb native Next navigation to the
 exact observed next-page document before inspecting its source rows. The wait
 uses the remaining bounded invocation timeout; Forasna retains its independently

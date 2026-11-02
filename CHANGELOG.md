@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.32 — 2026-11-02
+
+- Resume a late-committed Tanqeeb native Next after an invocation budget ends,
+  only for the exact saved observed Next href, the immediate next source page,
+  new stable IDs and consistent membership across DOM observations.
+- Keep capture and backend continuation checks. Skipped, foreign, wrong-URL,
+  repeated-ID and stale-model pages cannot qualify this continuation. Forasna
+  remains unchanged. No source frontier or archive completeness is inferred.
+- Browser runner advances to 0.1.3; Python remains 0.3.7 and the catalogue
+  remains 100 read-only tools and 101 source entries.
+
 ## 0.4.31 — 2026-11-02
 
 - Await documented native navigation around Tanqeeb Next clicks, using only the

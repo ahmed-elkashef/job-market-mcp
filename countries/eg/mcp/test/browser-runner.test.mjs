@@ -71,7 +71,7 @@ class FakeSink {
   async status() {return {status:'ok',source:this.tab.source,native_filter_plan:{native_work_model:'part_time'},initial_url:this.tab.source==='tanqeeb'?TQ:FS,cursor:this.cursor,source_continuation:this.cursor?{native_page_number:this.cursor.native_page_number}:null,verification_queue:this.queue,detail_queue:this.queue,listing_terminal_observed:this.done,capture_complete:this.done && !this.queue.length,done:this.done && !this.queue.length};}
   async capture(capture,meta) {
     const state=JSON.parse(capture.html);this.captures.push({state,meta});
-    this.cursor={url:state.url,stable_ids:state.stable_ids,native_page_number:state.native_page_number,native_filter_signature:'saved'};
+    this.cursor={url:state.url,stable_ids:state.stable_ids,native_page_number:state.native_page_number,native_filter_signature:'saved',source_continuation:{observed_next_control_href:state.next.href}};
     for (const id of state.stable_ids) {if (!this.seen.has(id)) this.newIDs.push(id);this.seen.add(id);}
     return this.status();
   }
@@ -194,6 +194,61 @@ test('live cursor resumes automatically and identical stable IDs remain consumer
   const result=await runBoardCapture({tab,sink,source:'tanqeeb',maxPages:2});
   assert.equal(result.counts.pages,1);assert.equal(result.counts.checkpoints_reused,1);assert.equal(tab.calls.filter(x=>x[0]==='goto').length,0);
   assert.deepEqual(sink.captures.map(x=>x.meta.resume),[true,false]);assert.deepEqual(sink.newIDs,['100003']);
+});
+
+test('a late native Tanqeeb successor resumes only the exact saved observed Next without seed replay',async()=>{
+  const tab=new FakeTab({pages:4});tab.page=3;tab.selected='2';
+  tab.url=TQ.replace('/jobs/search','/jobs/search/page/3').replace('&order_by=most_recent','');
+  const sink=new FakeSink(tab,{cursor:{url:TQ.replace('/jobs/search','/jobs/search/page/2'),stable_ids:['100002'],native_page_number:2,source_continuation:{observed_next_control_href:tab.url}}});
+  const result=await runBoardCapture({tab,sink,source:'tanqeeb',maxPages:1});
+  assert.deepEqual(sink.captures.map(x=>x.state.native_page_number),[3]);
+  assert.equal(result.counts.recoveries,0);assert.equal(result.counts.replayed_pages,0);
+  assert.equal(tab.calls.filter(x=>x[0]==='goto').length,0);
+  assert.ok(tab.calls.filter(x=>x[0]==='evaluate' && x[1]==='inspectBoardDOM').length>=4);
+  assert.deepEqual(sink.captures.map(x=>x.meta.resume),[false]);
+});
+
+test('a navigation committing at the invocation deadline is captured next invocation without replay or model loss',async()=>{
+  const original=Date.now;let clock=0;Date.now=()=>clock;
+  try {
+    const tab=new FakeTab({pages:3,type:'Unknown / Contract',delayNext:true});const sink=new FakeSink(tab);
+    const navigation=tab.playwright.expectNavigation;let first=true;
+    tab.playwright.expectNavigation=async(action,options)=>{
+      await navigation(action,options);
+      if(first){clock=40;first=false;}
+    };
+    const paused=await runBoardCapture({tab,sink,source:'tanqeeb',maxPages:3,maxMillis:40});
+    assert.equal(paused.status,'time_budget');assert.equal(sink.cursor.native_page_number,1);
+    assert.equal(tab.page,2);assert.equal(sink.done,false);
+    clock=100;
+    const resumed=await runBoardCapture({tab,sink,source:'tanqeeb',maxPages:1,maxMillis:40});
+    assert.deepEqual(sink.captures.map(x=>x.state.native_page_number),[1,2]);
+    assert.ok(sink.captures.every(x=>x.state.rows[0].type==='Unknown / Contract'));
+    assert.equal(resumed.counts.recoveries,0);assert.equal(resumed.counts.replayed_pages,0);
+    assert.equal(tab.calls.filter(x=>x[0]==='goto').length,1);
+    assert.equal(resumed.coverage_complete,false);
+  } finally {Date.now=original;}
+});
+
+test('missing foreign wrong-page wrong-URL or repeated-ID late successors cannot bypass native seed recovery',async()=>{
+  for (const kind of ['missing','foreign','skipped-page','different-url','repeated-ids','filter-drift','forasna']) {
+    const source=kind==='forasna'?'forasna':'tanqeeb';
+    const tab=new FakeTab({source,pages:4});tab.page=3;tab.selected='2';
+    tab.url=source==='tanqeeb'?TQ.replace('/jobs/search','/jobs/search/page/3').replace('&order_by=most_recent',''):new URL(FS+'&start=60').href;
+    let observed=tab.url;
+    if(kind==='missing')observed=undefined;
+    if(kind==='foreign')observed=observed.replace('egypt.tanqeeb.com','other.invalid');
+    if(kind==='skipped-page')tab.page=4;
+    if(kind==='different-url')observed+='&order_by=most_recent';
+    if(kind==='filter-drift')tab.selected='-1';
+    const ids=kind==='repeated-ids'?tab.state().stable_ids:['100002'];
+    const sink=new FakeSink(tab,{cursor:{url:source==='tanqeeb'?TQ.replace('/jobs/search','/jobs/search/page/2'):FS+'&start=30',stable_ids:ids,native_page_number:2,source_continuation:{observed_next_control_href:observed}}});
+    const result=await runBoardCapture({tab,sink,source,maxPages:1});
+    assert.equal(result.counts.recoveries,1,kind);
+    assert.equal(sink.captures[0].state.native_page_number,1,kind);
+    assert.deepEqual(tab.calls.filter(x=>x[0]==='goto').map(x=>x[1]),[new URL(source==='tanqeeb'?TQ:FS).href],kind);
+    assert.equal(result.coverage_complete,false);
+  }
 });
 
 test('lost UI context replays actual native pages rather than restoring a synthetic offset',async()=>{

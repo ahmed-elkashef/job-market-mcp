@@ -8,7 +8,7 @@
  */
 import { captureEgyptBoardDOM } from './browser-extract.mjs';
 
-export const BROWSER_RUNNER_VERSION = '0.1.1';
+export const BROWSER_RUNNER_VERSION = '0.1.2';
 const TANQEEB_MODELS = {
   part_time: { value:'2', label:'Part Time' },
   internship: { value:'5', label:'Internship' },
@@ -268,23 +268,45 @@ async function settled(tab, source, model, deadline, previous, expectedPage) {
   return {state:last,reason:Date.now()>=deadline ? 'time_budget' : lastReason};
 }
 
-async function next(tab,source,model,expectedPage) {
+async function next(tab,source,model,expectedPage,deadline,observedHref) {
   const control=source==='tanqeeb'
     ? tab.playwright.getByRole('link',{name:'Next',exact:true})
     : tab.playwright.locator('ul.pagination li.pag-next a');
   if (!await control.isVisible() || !await control.isEnabled()) throw Error('Native Next is unavailable');
-  try {await control.click();}
+  let target=null;
+  if (source==='tanqeeb') {
+    // Tanqeeb's observed native href identifies the next document. A click can
+    // return before navigation commits, leaving the previous cards visible.
+    // Await the documented navigation event before the normal DOM checks.
+    // Forasna deliberately retains its click-only path: its href offsets are
+    // not equivalent to the actual hydrated continuation.
+    if (!observedHref) throw Error('Tanqeeb native Next has no observed href');
+    target=publicURL(source,observedHref,'page',model);
+    const page=Number(new URL(target).pathname.match(/\/page\/(\d+)\/?$/)?.[1]);
+    if (!Number.isSafeInteger(expectedPage) || expectedPage<2 || page!==expectedPage) throw Error('Tanqeeb native Next href differs from the expected page');
+    if (typeof tab.playwright.expectNavigation!=='function') throw Error('Tanqeeb Next requires documented navigation readiness support');
+  }
+  const remaining=deadline-Date.now();
+  if (remaining<=0) return false;
+  const timeoutMs=Math.min(10000,remaining);
+  try {
+    if (source==='tanqeeb') {
+      await tab.playwright.expectNavigation(()=>control.click({timeoutMs}),
+        {url:target,waitUntil:'domcontentloaded',timeoutMs});
+    } else await control.click();
+  }
   catch (error) {
     let reached=false;
     try {
-      publicURL(source,await tabURL(tab),'page',model);
+      const destination=publicURL(source,await tabURL(tab),'page',model);
       await fresh(tab);
       const actual=await tab.playwright.evaluate(inspectBoardDOM,{source});
-      reached=Boolean(expectedPage && actual.native_page_number===expectedPage);
+      reached=Boolean(expectedPage && actual.native_page_number===expectedPage && (source!=='tanqeeb' || destination===target));
     } catch { /* A changed/foreign identity cannot satisfy native Next. */ }
     if (!reached) throw error;
   }
   await fresh(tab);
+  return true;
 }
 
 function report(reason, counts, extra={}) {
@@ -458,7 +480,8 @@ export async function runBoardCapture({tab,sink,source,workModel='part_time',max
     }
     if (counts.pages>=maxPages || Date.now()>=deadline) break;
     previous=state;expectedPage=state.native_page_number ? state.native_page_number+1 : null;
-    await next(tab,source,workModel,expectedPage);state=null;
+    if (!await next(tab,source,workModel,expectedPage,deadline,state.next.href)) return limit('time_budget');
+    state=null;
   }
   if (collectDetails && Date.now()<deadline) {
     const reason=await details();

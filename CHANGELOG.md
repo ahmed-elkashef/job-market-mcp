@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.30 — 2026-11-02
+
+- Preserve valid Lever description sections without headings, including their
+  complete text and native labels, instead of failing a whole employer board.
+- Detect Tanqeeb result-scope drift when native pagination retains a selected
+  work model but returns a conflicting broad result cohort. Compare explicit
+  selected/default facet totals and actual pagination without guessing page
+  sizes, removing cards, or putting live counts in query identity.
+- Recheck scope after browser capture and independently validate the captured
+  HTML in the Python parser. Attempt one bounded native-control recovery;
+  persistent contradictions remain incomplete evidence.
+- Python source adapters advance to 0.3.7. Browser runner advances to 0.1.1.
+  The 100-tool and 101-source catalogue is unchanged. These corrections do not
+  certify candidate fit, original publication dates or complete market history.
+
 ## 0.4.27 — 2026-10-30
 
 - Add original anonymous GULP employment whole-page and full-detail read tools.

@@ -1,6 +1,6 @@
 {
   "name": "job-market-mcp",
-  "version": "0.4.29",
+  "version": "0.4.30",
   "private": true,
   "description": "Country-organized read-only labour-market sources: Egypt, Germany and shared infrastructure.",
   "type": "module",

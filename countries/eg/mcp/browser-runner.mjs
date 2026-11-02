@@ -8,7 +8,7 @@
  */
 import { captureEgyptBoardDOM } from './browser-extract.mjs';
 
-export const BROWSER_RUNNER_VERSION = '0.1.0';
+export const BROWSER_RUNNER_VERSION = '0.1.1';
 const TANQEEB_MODELS = {
   part_time: { value:'2', label:'Part Time' },
   internship: { value:'5', label:'Internship' },
@@ -70,12 +70,23 @@ export function inspectBoardDOM({source}) {
   const visible = node => Boolean(node && !node.hidden && node.getAttribute('aria-hidden')!=='true' && node.getClientRects().length);
   const normalize = text => String(text || '').replace(/[\u2010-\u2015\u2212]/g,'-').replace(/\s+/g,' ').trim();
   const rows = [];
-  let controls = [], country=null, page=null, nextNode=null;
+  let controls = [], country=null, page=null, nextNode=null, native_result_scope=null;
   if (source === 'tanqeeb') {
     if (!/^\/jobs\/search(?:\/page\/[1-9]\d*)?$/.test(url.pathname)) throw Error('Public inventory path required');
     const selected = document.querySelector('select#countryHeader[name="country"] option:checked');
     country = selected ? {value:selected.value,text:normalize(selected.textContent)} : null;
     controls = Array.from(document.querySelectorAll('input:checked,select option:checked')).filter(node=>['refine[job_types][]','refine[order_by]','refine[workplaces][]','refine[search_period]'].includes(node.name || node.parentElement?.name)).map(node=>({name:node.name || node.parentElement.name,value:node.value})).sort((a,b)=>(a.name+a.value).localeCompare(b.name+b.value));
+    // These live public counts describe the returned cohort, not the immutable
+    // query identity. A checked PT control can survive a native Next while the
+    // default facets and pager have already reverted to the broad inventory.
+    const facet_counts=Array.from(document.querySelectorAll('input:checked,select option:checked')).filter(node=>['refine[job_types][]','refine[workplaces][]','refine[search_period]'].includes(node.name || node.parentElement?.name)).map(node=>{
+      const label=normalize(node.labels?.[0]?.innerText || node.textContent);
+      const digits=label.match(/\(([\d,]+)\)\s*$/)?.[1];
+      const count=digits===undefined ? null : Number(digits.replace(/,/g,''));
+      return {name:node.name || node.parentElement.name,value:node.value,label,count:Number.isSafeInteger(count) && count>=0 ? count : null};
+    });
+    const pagination_pages=Array.from(document.querySelectorAll('[aria-label="Search Results Navigation"] a')).filter(visible).map(node=>normalize(node.innerText)).filter(text=>/^[1-9]\d*$/.test(text)).map(Number).filter(Number.isSafeInteger);
+    native_result_scope={facet_counts,pagination_pages};
     for (const node of document.querySelectorAll('article[data-job-id]')) if (visible(node)) {
       const anchor=node.querySelector('h2 a[href]');
       rows.push({id:node.getAttribute('data-job-id'),type:normalize(node.getAttribute('data-job-type')),country:normalize(node.getAttribute('data-job-country')),closed:node.getAttribute('data-job-closed'),url:anchor?.href || null,part_time_contradiction:/part[ -]?time|نصف\s+يوم|دوام\s+جزئي/i.test(normalize(node.innerText))});
@@ -106,8 +117,8 @@ export function inspectBoardDOM({source}) {
   const publicText=rows.length ? '' : normalize(document.body?.innerText).slice(0,1500);
   const gate=!rows.length && (/^(?:403|access denied|forbidden|just a moment)/i.test(title) || /verify (?:that )?you are human|checking your browser|complete (?:the )?security check/i.test(publicText));
   const ids=rows.map(row=>row.id);
-  return {url:url.href,observed_ui_hash,country,controls,native_page_number:page,rows,stable_ids:ids,next,gate,
-    fingerprint:JSON.stringify({page,controls,country,rows:rows.map(({id,type,country,closed})=>({id,type,country,closed}))})};
+  return {url:url.href,observed_ui_hash,country,controls,native_page_number:page,rows,stable_ids:ids,next,gate,native_result_scope,
+    fingerprint:JSON.stringify({page,controls,country,native_result_scope,rows:rows.map(({id,type,country,closed})=>({id,type,country,closed}))})};
 }
 
 /** Readiness of an exact canonical detail, without returning its full body. */
@@ -149,6 +160,17 @@ export function membership(state, source, model) {
     const values=state.controls.filter(row=>row.name==='refine[job_types][]').map(row=>row.value);
     if (values.length!==1 || values[0]!==TANQEEB_MODELS[model].value || state.controls.filter(row=>row.name==='refine[order_by]' && row.value==='most_recent').length!==1) return 'selected_filter_drift';
     if (state.controls.some(row=>(row.name==='refine[workplaces][]' && row.value!=='') || (row.name==='refine[search_period]' && row.value!=='0'))) return 'selected_filter_drift';
+    const facets=state.native_result_scope?.facet_counts || [];
+    const models=facets.filter(row=>row.name==='refine[job_types][]' && Number.isSafeInteger(row.count) && row.count>=0);
+    if (models.length===1) {
+      const total=models[0].count;
+      const defaults=facets.filter(row=>(row.name==='refine[workplaces][]' && row.value==='') || (row.name==='refine[search_period]' && row.value==='0'));
+      if (defaults.some(row=>Number.isSafeInteger(row.count) && row.count>=0 && row.count!==total)) return 'native_result_scope_drift';
+      // Every nonempty native page needs at least one result. This bound does
+      // not assume a page size or reject a legitimate mixed/unknown card type.
+      const pages=[state.native_page_number,...(state.native_result_scope?.pagination_pages || [])].filter(Number.isSafeInteger);
+      if (total===0 || pages.some(page=>page>total)) return 'native_result_scope_drift';
+    }
     if (model!=='all' && state.rows.every(row=>/^full[ -]?time$/i.test(row.type) && !row.part_time_contradiction)) return 'native_membership_drift';
     if (state.rows.every(row=>row.country && row.country!=='Egypt')) return 'native_country_membership_drift';
   } else {
@@ -164,7 +186,7 @@ export function membership(state, source, model) {
 function compact(state) {
   const models={};
   for (const row of state.rows || []) models[row.type || 'unknown']=(models[row.type || 'unknown'] || 0)+1;
-  return {url:state.url,observed_ui_hash:state.observed_ui_hash || null,native_page_number:state.native_page_number,raw_count:state.rows?.length || 0,models,stable_ids:state.stable_ids,next:state.next};
+  return {url:state.url,observed_ui_hash:state.observed_ui_hash || null,native_page_number:state.native_page_number,raw_count:state.rows?.length || 0,models,stable_ids:state.stable_ids,next:state.next,native_result_scope:state.native_result_scope || null};
 }
 
 async function fresh(tab) {
@@ -390,7 +412,7 @@ export async function runBoardCapture({tab,sink,source,workModel='part_time',max
       state=result.state;
       if (result.reason) {
         if (result.reason==='time_budget') return limit('time_budget');
-        const recoverable=['native_membership_drift','native_country_membership_drift','selected_filter_drift','native_page_repeated','native_page_did_not_advance'].includes(result.reason);
+        const recoverable=['native_membership_drift','native_result_scope_drift','native_country_membership_drift','selected_filter_drift','native_page_repeated','native_page_did_not_advance'].includes(result.reason);
         let diagnostic=null;
         if (state && recoverable) {
           try {diagnostic=await capturePage();} catch { /* Still preserve compact drift metadata. */ }
@@ -411,7 +433,7 @@ export async function runBoardCapture({tab,sink,source,workModel='part_time',max
       const capture=await capturePage();
       const after=await tab.playwright.evaluate(inspectBoardDOM,{source});
       after.url=publicURL(source,after.url,'page',workModel);
-      if (after.fingerprint!==state.fingerprint || capture.url!==state.url) {state=null;continue;}
+      if (membership(after,source,workModel) || after.fingerprint!==state.fingerprint || capture.url!==state.url) {state=null;continue;}
       const sameCheckpoint=Boolean(status.cursor && capture.url===status.cursor.url && JSON.stringify([...state.stable_ids].sort())===JSON.stringify([...(status.cursor.stable_ids || [])].sort()));
       const accepted=await sink.capture(capture,{resume:sameCheckpoint});
       if (accepted?.status!=='ok') return report('capture_intake_failed',counts,{continuation:continuationOf(accepted)});

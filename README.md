@@ -1,5 +1,11 @@
 # Job Market MCP
 
+Current source corrections: v0.4.30 preserves complete unheaded Lever sections
+and detects Tanqeeb pagination returning a broad cohort under a retained work
+model checkbox. Browser and captured-HTML checks preserve contradictory evidence
+and stop after bounded recovery. Python adapters are 0.3.7; no new source or
+whole-market coverage claim is added.
+
 Current original extension: v0.4.29 adds the independently qualified Haema
 Jobshop employer origin and preserves every primary CMS section, including its
 three-section internship template. Fraport vendor redirects remain isolated;

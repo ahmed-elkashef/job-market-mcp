@@ -6,8 +6,8 @@ const TQ='https://egypt.tanqeeb.com/jobs/search?keywords=&country=213&state=0&la
 const FS='https://forasna.com/وظائف-خالية?'+new URLSearchParams({'filters[country][0]':'مصر','filters[jobType][0]':'نصف يوم'});
 
 class FakeTab {
-  constructor({source='tanqeeb',pages=3,type='Part Time',leakOnce=false,repeat=false,gate=false}={}) {
-    Object.assign(this,{source,pages,type,leakOnce,repeat,gate,page:1,selected:'-1',sort:'most_recent',calls:[],url:'https://example.invalid/',applied:0});
+  constructor({source='tanqeeb',pages=3,type='Part Time',leakOnce=false,repeat=false,gate=false,delayNext=false}={}) {
+    Object.assign(this,{source,pages,type,leakOnce,repeat,gate,delayNext,page:1,selected:'-1',sort:'most_recent',calls:[],url:'https://example.invalid/',applied:0});
     this.playwright={
       domSnapshot:async()=>{this.calls.push(['snapshot']);return 'Native public UI';},
       evaluate:async(fn,args)=>{
@@ -19,6 +19,17 @@ class FakeTab {
       },
       locator:selector=>this.control(selector),
       getByRole:(role,args)=>this.control(role+':'+String(args.name)),
+      expectNavigation:async(action,options)=>{
+        this.calls.push(['expectNavigation',options]);
+        await action();
+        if (this.pendingNavigation) {
+          this.calls.push(['navigationPending',this.page]);
+          await Promise.resolve();
+          if (this.navigationTimeout) throw Error('Native navigation timed out before commit');
+          this.pendingNavigation();this.pendingNavigation=null;
+        }
+        assert.equal(this.url,options.url);
+      },
     };
   }
   state() {
@@ -26,7 +37,7 @@ class FakeTab {
     const id=String(this.repeat?100001:100000+this.page);
     const rows=this.gate || this.hydrating?[]:[{id,type:this.source==='forasna'?'نصف يوم':nativeType,country:this.source==='tanqeeb'?'Egypt':null,closed:this.closed?'1':'0',url:this.source==='tanqeeb'?`https://egypt.tanqeeb.com/jobs-in-middle-east/all/jobs/0${id}.html`:`https://forasna.com/job/p/constructed-${id}`,part_time_contradiction:Boolean(this.contradiction)}];
     const controls=this.source==='tanqeeb'?[{name:'refine[job_types][]',value:this.selected},{name:'refine[order_by]',value:this.sort}]:[{name:'Egypt-country',value:true},{name:'half-day',value:true}];
-    return {url:this.url,country:this.source==='tanqeeb'?{value:'213',text:'Egypt'}:{value:'مصر',text:'Egypt'},controls,native_page_number:this.page,rows,stable_ids:rows.map(x=>x.id),next:{visible:this.page<this.pages,enabled:true,href:this.source==='forasna'?FS+'&start=20':TQ.replace('/jobs/search','/jobs/search/page/'+(this.page+1))},gate:this.gate,fingerprint:JSON.stringify({page:this.page,controls,rows})};
+    return {url:this.url,country:this.source==='tanqeeb'?{value:'213',text:'Egypt'}:{value:'مصر',text:'Egypt'},controls,native_page_number:this.page,rows,stable_ids:rows.map(x=>x.id),next:{visible:this.page<this.pages,enabled:true,href:this.source==='forasna'?FS+'&start=20':TQ.replace('/jobs/search','/jobs/search/page/'+(this.page+1)).replace('&order_by=most_recent','')},gate:this.gate,fingerprint:JSON.stringify({page:this.page,controls,rows})};
   }
   async goto(url) {
     this.calls.push(['goto',url]);this.url=new URL(url).href;
@@ -37,11 +48,15 @@ class FakeTab {
       isVisible:async()=>true,isEnabled:async()=>true,
       first:()=>this.control(selector),
       waitFor:async options=>{this.calls.push(['waitFor',selector,options]);if(this.hydrationTimeout || this.detailHydrationTimeout)throw Error('Visible section wait timed out');this.hydrating=false;this.detailHydrating=false;},
-      click:async()=>{
-        this.calls.push(['click',selector]);
+      click:async options=>{
+        this.calls.push(['click',selector,options]);
         if (selector.includes('Next') || selector.includes('pag-next')) {
-          this.page+=1;
-          this.url=this.source==='tanqeeb'?TQ.replace('/jobs/search','/jobs/search/page/'+this.page).replace('&order_by=most_recent',''):new URL(FS+'&start='+((this.page-1)*30)).href;
+          const advance=()=>{
+            this.page+=1;
+            this.url=this.source==='tanqeeb'?TQ.replace('/jobs/search','/jobs/search/page/'+this.page).replace('&order_by=most_recent',''):new URL(FS+'&start='+((this.page-1)*30)).href;
+          };
+          if (this.delayNext) this.pendingNavigation=advance;
+          else advance();
         } else if (selector.includes('filter_job_type_')) {
           this.selected=selector.match(/filter_job_type_(-?\d+)/)[1];
           if (this.selected!=='-1') {this.applied+=1;this.leaking=this.leakOnce && this.applied===1;}
@@ -94,6 +109,83 @@ test('native Next click wins over the wrong advertised Forasna offset',async()=>
   assert.equal(result.counts.pages,2);
   assert.match(sink.captures[1].state.url,/start=30/);
   assert.ok(!tab.calls.some(x=>x[0]==='goto' && x[1].includes('start=20')));
+  assert.ok(!tab.calls.some(x=>x[0]==='expectNavigation'));
+});
+
+test('delayed Tanqeeb Next awaits the observed document before checking native rows',async()=>{
+  const tab=new FakeTab({pages:3,delayNext:true});const sink=new FakeSink(tab);
+  const result=await runBoardCapture({tab,sink,source:'tanqeeb',maxPages:3});
+  assert.deepEqual(sink.captures.map(x=>x.state.native_page_number),[1,2,3]);
+  assert.equal(result.counts.recoveries,0);assert.equal(sink.done,true);
+  assert.deepEqual(tab.calls.filter(x=>x[0]==='navigationPending').map(x=>x[1]),[1,2]);
+  const waits=tab.calls.filter(x=>x[0]==='expectNavigation');
+  assert.equal(waits.length,2);
+  assert.equal(waits[0][1].url,TQ.replace('/jobs/search','/jobs/search/page/2').replace('&order_by=most_recent',''));
+  assert.ok(waits.every(x=>x[1].waitUntil==='domcontentloaded' && x[1].timeoutMs>0 && x[1].timeoutMs<=10000));
+  assert.equal(tab.calls.filter(x=>x[0]==='goto').length,1);
+});
+
+test('unverified Tanqeeb Next destinations fail before a click or synthetic navigation',async()=>{
+  for (const href of [null,'https://other.invalid/jobs/search/page/2',TQ.replace('/jobs/search','/jobs/search/page/3'),TQ.replace('keywords=','keywords=engineer')]) {
+    const tab=new FakeTab({pages:2});const state=tab.state.bind(tab);
+    tab.state=()=>{const value=state();value.next.href=href;return value;};
+    const sink=new FakeSink(tab);
+    await assert.rejects(runBoardCapture({tab,sink,source:'tanqeeb',maxPages:2}),/href|scope|Whole-Egypt/);
+    assert.equal(sink.captures.length,1);assert.equal(sink.done,false);
+    assert.equal(tab.calls.filter(x=>x[0]==='goto').length,1);
+    assert.ok(!tab.calls.some(x=>x[0]==='click' && x[1].includes('Next')));
+  }
+});
+
+test('Tanqeeb Next timeouts are bounded by the invocation remainder and expired budgets do not click',async()=>{
+  const original=Date.now;
+  try {
+    for (const remaining of [5,0]) {
+      let clock=0;Date.now=()=>clock;
+      const tab=new FakeTab({pages:2,delayNext:true});const control=tab.control.bind(tab);
+      tab.control=selector=>{
+        const value=control(selector);
+        return selector.includes('Next') ? {...value,isEnabled:async()=>{clock=40-remaining;return true;}} : value;
+      };
+      const sink=new FakeSink(tab);
+      const result=await runBoardCapture({tab,sink,source:'tanqeeb',maxPages:2,maxMillis:40});
+      if (remaining) {
+        assert.equal(result.counts.pages,2);
+        assert.equal(tab.calls.find(x=>x[0]==='expectNavigation')[1].timeoutMs,5);
+        assert.equal(tab.calls.find(x=>x[0]==='click' && x[1].includes('Next'))[2].timeoutMs,5);
+      } else {
+        assert.equal(result.status,'time_budget');assert.equal(sink.cursor.native_page_number,1);
+        assert.ok(!tab.calls.some(x=>x[0]==='expectNavigation' || (x[0]==='click' && x[1].includes('Next'))));
+      }
+      assert.equal(result.coverage_complete,false);
+    }
+  } finally {Date.now=original;}
+});
+
+test('uncommitted Tanqeeb navigation and unavailable navigation readiness preserve the prior checkpoint',async()=>{
+  for (const unavailable of [false,true]) {
+    const tab=new FakeTab({pages:2,delayNext:true});
+    if (unavailable) delete tab.playwright.expectNavigation;
+    else tab.navigationTimeout=true;
+    const sink=new FakeSink(tab);
+    await assert.rejects(runBoardCapture({tab,sink,source:'tanqeeb',maxPages:2}),unavailable?/readiness support/:/before commit/);
+    assert.equal(sink.cursor.native_page_number,1);assert.equal(sink.captures.length,1);assert.equal(sink.done,false);
+    if (unavailable) assert.ok(!tab.calls.some(x=>x[0]==='click' && x[1].includes('Next')));
+  }
+});
+
+test('a host timeout at the expected page on a different Tanqeeb URL cannot qualify the observed Next',async()=>{
+  const tab=new FakeTab({pages:2});const control=tab.control.bind(tab);
+  tab.control=selector=>{
+    const value=control(selector);
+    return {...value,click:async options=>{
+      await value.click(options);
+      if (selector.includes('Next')) {tab.url+='&order_by=most_recent';throw Error('wrong-destination timeout');}
+    }};
+  };
+  const sink=new FakeSink(tab);
+  await assert.rejects(runBoardCapture({tab,sink,source:'tanqeeb',maxPages:2}),/wrong-destination timeout/);
+  assert.equal(sink.captures.length,1);assert.equal(sink.done,false);
 });
 
 test('live cursor resumes automatically and identical stable IDs remain consumer-deduplicated',async()=>{

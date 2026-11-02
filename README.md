@@ -1,5 +1,10 @@
 # Job Market MCP
 
+Current browser correction: v0.4.31 awaits Tanqeeb native Next navigation to the
+exact observed next-page document before inspecting its source rows. The wait
+uses the remaining bounded invocation timeout; Forasna retains its independently
+verified native-click continuation. Browser runner is 0.1.2; Python stays 0.3.7.
+
 Current source corrections: v0.4.30 preserves complete unheaded Lever sections
 and detects Tanqeeb pagination returning a broad cohort under a retained work
 model checkbox. Browser and captured-HTML checks preserve contradictory evidence

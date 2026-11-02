@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.31 — 2026-11-02
+
+- Await documented native navigation around Tanqeeb Next clicks, using only the
+  exact observed in-scope next-page href and the remaining invocation timeout.
+  Delayed navigation cannot be mistaken for a repeated old page.
+- Retain source DOM page/ID, membership and post-capture checks. Forasna keeps its
+  verified native-click continuation because its advertised offset can differ
+  from the hydrated page. No guessed routes, fixed sleeps or skipped cards.
+- Browser runner advances to 0.1.2; Python adapters remain 0.3.7. The 100-tool
+  and 101-source catalogue is unchanged. Budgets remain resumable, not frontiers.
+
 ## 0.4.30 — 2026-11-02
 
 - Preserve valid Lever description sections without headings, including their

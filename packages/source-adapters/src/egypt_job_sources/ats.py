@@ -453,7 +453,10 @@ def _listing(row: dict, source: str, board: str, region: str | None) -> dict:
         for section in lists:
             if not isinstance(section, dict):
                 raise ValueError("Invalid posting description section")
-            label = _string(section.get("text"), "section label")
+            # Published Lever lists may contain an unheaded content block.
+            # Preserve its content and raw label; a missing heading must not
+            # invalidate every other posting in the board response.
+            label = _string(section.get("text"), "section label", optional=True) or ""
             content = _string(section.get("content"), "section HTML", optional=True)
             sections.append({"label": label, "html": content, "text": _html_text(content)})
         for label, markup, plain in (
@@ -469,12 +472,17 @@ def _listing(row: dict, source: str, board: str, region: str | None) -> dict:
                     }
                 )
         text = "\n\n".join(
-            (section["label"] + "\n" if index else "") + section["text"]
+            (section["label"] + "\n" if index and section["label"].strip() else "")
+            + section["text"]
             for index, section in enumerate(sections)
             if section["text"]
         )
         full_html = "\n".join(
-            ("<h3>" + html_entities.escape(section["label"]) + "</h3>" if index else "")
+            (
+                "<h3>" + html_entities.escape(section["label"]) + "</h3>"
+                if index and section["label"].strip()
+                else ""
+            )
             + (section["html"] or "")
             for index, section in enumerate(sections)
         )

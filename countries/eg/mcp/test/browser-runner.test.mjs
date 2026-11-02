@@ -382,3 +382,74 @@ test('canonical detail hydration waits for the verified body container and prese
     assert.equal(blocked.queue.length,1);assert.equal(timeout.calls.filter(x=>x[0]==='waitFor').length,1);
   }
 });
+
+// A checked model can remain while a native Next loads the entire inventory.
+// One Contract row prevents the old all-FT heuristic from detecting this race.
+class ScopeTab extends FakeTab {
+  constructor({persistent=false,liveCounts=false,race=false}={}) {
+    super({pages:3});Object.assign(this,{persistent,liveCounts,forceScopeDrift:false});
+    if (race) {
+      const evaluate=this.playwright.evaluate;
+      this.playwright.evaluate=async(fn,args)=>{
+        const result=await evaluate(fn,args);
+        if (fn.name==='captureEgyptBoardDOM' && this.applied===1) this.forceScopeDrift=true;
+        return result;
+      };
+    }
+  }
+  state() {
+    const state=super.state();
+    const drift=(this.page===2 || this.forceScopeDrift) && (this.persistent || this.applied===1);
+    const total=this.liveCounts && this.page>1 ? 365 : 364;
+    state.native_result_scope={facet_counts:[
+      {name:'refine[job_types][]',value:'2',count:total},
+      {name:'refine[workplaces][]',value:'',count:drift?59197:total},
+      {name:'refine[search_period]',value:'0',count:drift?59197:total},
+    ],pagination_pages:[this.page,this.page+1,drift?500:19]};
+    if (drift) {
+      state.rows[0].type='Full Time';
+      state.rows.push({id:'199999',type:'Contract',country:'Egypt',closed:'0',url:'https://egypt.tanqeeb.com/jobs-in-egypt/all/jobs/0199999.html'});
+      state.stable_ids=state.rows.map(row=>row.id);
+    }
+    state.fingerprint=JSON.stringify({page:this.page,controls:state.controls,rows:state.rows,native_result_scope:state.native_result_scope});
+    return state;
+  }
+}
+
+test('native Next cohort drift is saved diagnostically and recovered through native controls before commit',async()=>{
+  const tab=new ScopeTab();const sink=new FakeSink(tab);
+  const result=await runBoardCapture({tab,sink,source:'tanqeeb',maxPages:4});
+  assert.equal(result.counts.recoveries,1);
+  assert.deepEqual(sink.captures.map(x=>x.state.native_page_number),[1,1,2,3]);
+  assert.ok(sink.captures.every(x=>x.state.rows.every(row=>row.type==='Part Time')));
+  const diagnostic=sink.limits.find(x=>x.reason==='native_result_scope_drift');
+  assert.ok(diagnostic);
+  assert.equal(JSON.parse(diagnostic.diagnostic_capture.html).native_result_scope.facet_counts[1].count,59197);
+  assert.deepEqual(JSON.parse(diagnostic.diagnostic_capture.html).rows.map(row=>row.type),['Full Time','Contract']);
+  assert.equal(tab.applied,2);assert.equal(sink.done,true);
+});
+
+test('persistent Tanqeeb result drift stays incomplete after one bounded native seed recovery',async()=>{
+  const tab=new ScopeTab({persistent:true});const sink=new FakeSink(tab);
+  const result=await runBoardCapture({tab,sink,source:'tanqeeb',maxPages:4});
+  assert.equal(result.status,'native_result_scope_drift');assert.equal(result.counts.recoveries,1);
+  assert.deepEqual(sink.captures.map(x=>x.state.native_page_number),[1,1]);
+  assert.equal(sink.done,false);assert.equal(result.coverage_complete,false);
+  assert.equal(sink.limits.filter(x=>x.reason==='native_result_scope_drift').length,2);
+});
+
+test('live coherent Tanqeeb result counts are observed rather than pinned to the first page',async()=>{
+  const tab=new ScopeTab({liveCounts:true});tab.applied=2;
+  const sink=new FakeSink(tab);const result=await runBoardCapture({tab,sink,source:'tanqeeb',maxPages:3});
+  assert.equal(result.counts.recoveries,0);
+  assert.deepEqual(sink.captures.map(x=>x.state.native_result_scope.facet_counts[0].count),[364,365,365]);
+  assert.equal(sink.done,true);
+});
+
+test('inspection-to-capture result-scope races never commit the unchecked native cohort',async()=>{
+  const tab=new ScopeTab({race:true});const sink=new FakeSink(tab);
+  const result=await runBoardCapture({tab,sink,source:'tanqeeb',maxPages:3});
+  assert.equal(result.counts.recoveries,1);
+  assert.ok(sink.captures.every(x=>x.state.native_result_scope.facet_counts[1].count===x.state.native_result_scope.facet_counts[0].count));
+  assert.equal(sink.limits.filter(x=>x.reason==='native_result_scope_drift').length,1);
+});

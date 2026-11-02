@@ -238,6 +238,40 @@ def _pagination(source, doc, url):
     return links, observed
 
 
+def _tanqeeb_result_scope(native_filters, pagination, native_page):
+    """Refuse explicit cohort contradictions; never filter individual cards."""
+    facets = []
+    for row in native_filters["selected_controls"]:
+        if row["name"] not in {
+            "refine[job_types][]",
+            "refine[workplaces][]",
+            "refine[search_period]",
+        }:
+            continue
+        match = re.search(r"\(([0-9,]+)\)\s*$", row["label"])
+        count = int(match[1].replace(",", "")) if match else None
+        facets.append({**row, "count": count})
+    pages = [int(row["text"]) for row in pagination if re.fullmatch(r"[1-9][0-9]*", row["text"])]
+    models = [row for row in facets if row["name"] == "refine[job_types][]"]
+    # Multi-model facet counts need not sum to the OR result count. Historical
+    # captures without explicit counters remain readable; missing counts never
+    # become proof of native membership or an inferred provider total.
+    if len(models) == 1 and models[0]["count"] is not None:
+        total = models[0]["count"]
+        defaults = [
+            row
+            for row in facets
+            if (row["name"] == "refine[workplaces][]" and row["value"] == "")
+            or (row["name"] == "refine[search_period]" and row["value"] == "0")
+        ]
+        if any(row["count"] is not None and row["count"] != total for row in defaults):
+            raise ValueError("Tanqeeb selected model and returned result-scope totals contradict")
+        # No fixed page size: each nonempty page needs at least one result.
+        if total == 0 or max([native_page, *pages]) > total:
+            raise ValueError("Tanqeeb native pagination contradicts the selected result total")
+    return {"facet_counts": facets, "pagination_pages": pages}
+
+
 def parse_page(source, body, url):
     validate_url(source, url)
     doc = _document(body)
@@ -330,12 +364,18 @@ def parse_page(source, body, url):
         }
         native_page = int(parse_qs(urlsplit(url).query).get("page", ["1"])[0])
     pagination, observed = _pagination(source, doc, url)
+    native_result_scope = (
+        _tanqeeb_result_scope(native_filters, pagination, native_page)
+        if source == "tanqeeb"
+        else None
+    )
     if explicit_empty and observed:
         raise ValueError("Akhtaboot empty state contradicts a live Next control")
     return {
         "listings": listings,
         "reported_total": 0 if explicit_empty else None,
         "source_filters": native_filters,
+        "native_result_scope": native_result_scope,
         "rendered_page_number": native_page,
         "next_url": None if source == "tanqeeb" else observed,
         "observed_next_control_href": observed,

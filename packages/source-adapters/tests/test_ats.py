@@ -224,6 +224,33 @@ class ATSTests(unittest.TestCase):
         self.assertIn("Opening plain text.", listing["description"])
         self.assertIn("Body only available as HTML.", listing["description"])
 
+    def test_lever_unheaded_sections_preserve_content_and_whole_page(self):
+        for label in ("", "   ", None):
+            with self.subTest(label=label):
+                first, second = lever_job(), lever_job("synthetic-101")
+                first["lists"].insert(0, {"text": label, "content": "<p>Unheaded support note.</p>"})
+                result = ats.parse_board([first, second], "lever", "example", skip=50, limit=50)
+                self.assertEqual(result["returned_count"], 2)
+                self.assertEqual(len(result["listings"]), 2)
+                self.assertEqual(result["pagination"]["next_skip"], 52)
+                listing = result["listings"][0]
+                self.assertIn("Unheaded support note.", listing["description"])
+                self.assertIn("<p>Unheaded support note.</p>", listing["description_html"])
+                self.assertNotIn("<h3></h3>", listing["description_html"])
+                self.assertNotIn("<h3>   </h3>", listing["description_html"])
+                self.assertEqual(listing["source_data"]["lists"][0]["text"], label)
+                self.assertIn("Specific source requirement.", listing["description"])
+                self.assertIn("Closing terms.", listing["description"])
+
+    def test_lever_nontext_section_heading_remains_schema_failure(self):
+        for label in (False, 7, [], {}):
+            with self.subTest(label=label):
+                row = lever_job()
+                row["lists"][0]["text"] = label
+                result = ats.read_board("lever", "example", transport=lambda _: encoded([row]))
+                self.assertEqual(result["status"], "source_limited")
+                self.assertNotIn("listings", result)
+
     def test_lever_short_page_continues_actual_offset_then_empty_is_explicit_terminal(self):
         first = ats.parse_board([lever_job()], "lever", "example", skip=0, limit=100)
         self.assertEqual(first["pagination"]["next_skip"], 1)

@@ -94,6 +94,54 @@ class SecondaryBoardTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             board_page_url("tanqeeb", work_model="part_time")
 
+    def test_tanqeeb_checked_priority_refuses_contradictory_result_facets_before_intake(self):
+        url = board_page_url("tanqeeb")
+
+        def counted(*, model_total=364, result_total=364, last_page=19, jobtype="Part Time"):
+            body = tanqeeb_page(jobtype=jobtype).replace(
+                "Constructed native label", f"Part Time ({model_total:,})"
+            )
+            defaults = (
+                '<span data-filter-name="refine[workplaces][]" data-filter-value="">'
+                f"All ({result_total:,})</span>"
+                '<span data-filter-name="refine[search_period]" data-filter-value="0">'
+                f"All Time ({result_total:,})</span>"
+            )
+            pager = (
+                '<nav aria-label="Search Results Navigation">'
+                f'<a href="{board_page_url("tanqeeb", last_page)}">{last_page}</a></nav>'
+            )
+            return body.replace("</section>", defaults + "</section>", 1) + pager
+
+        for body in [
+            counted(result_total=59197, last_page=500, jobtype="Contract"),
+            counted(last_page=500),
+            counted(model_total=0, result_total=0, last_page=1),
+        ]:
+            with self.subTest(body=body), self.assertRaisesRegex(ValueError, "contradict"):
+                parse_page("tanqeeb", body, url)
+
+        first = None
+        for total in [364, 365]:
+            for jobtype in ["Part Time", "Contract", "Full Time / Part Time", "Unknown"]:
+                parsed = parse_page(
+                    "tanqeeb", counted(model_total=total, result_total=total, jobtype=jobtype), url
+                )
+                self.assertEqual(parsed["listings"][0]["employment_type_raw"], jobtype)
+                self.assertEqual(parsed["native_result_scope"]["facet_counts"][0]["count"], total)
+                if first is None:
+                    first = parsed
+                self.assertEqual(
+                    parsed["source_filters"]["native_filter_signature"],
+                    first["source_filters"]["native_filter_signature"],
+                )
+
+        # The public parser preserves contrary cards when the native cohort
+        # counters agree; person-specific screening remains downstream.
+        parsed = parse_page("tanqeeb", counted(jobtype="Full Time"), url)
+        self.assertEqual(parsed["listings"][0]["employment_type_raw"], "Full Time")
+        self.assertEqual(len(parsed["listings"]), 1)
+
     def test_native_next_scope_and_identity_must_match(self):
         first = board_page_url("tanqeeb")
         for wrong in [board_page_url("tanqeeb", 2).replace("country=213", "country=113"), first]:

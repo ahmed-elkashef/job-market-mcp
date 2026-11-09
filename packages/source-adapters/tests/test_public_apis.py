@@ -81,6 +81,7 @@ class PublicAPITests(unittest.TestCase):
         page = parse_page("arbeitnow", json.dumps(raw), endpoint("arbeitnow", 1))
         self.assertEqual(page["next_url"], raw["links"]["next"])
         self.assertEqual(page["listings"][0]["description"], raw["data"][0]["description"])
+        self.assertEqual(page["listings"][0]["publication_basis"], "provider_activity_created_at")
 
     def test_arbetnow_terminal_null_required(self):
         raw = self.arbeit()

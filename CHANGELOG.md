@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.34 — 2026-11-09
+
+- Preserve the Tanqeeb listings cursor during delayed native navigation and use a separate tab for Tanqeeb and Forasna detail reads.
+- Retain an observed regional Tanqeeb link as listing metadata while keeping detail scope restricted.
+- Distinguish Himalayas update and Arbeitnow activity clocks from original publication. Require Arbeitnow’s exact native continuation and explicit terminal signal.
+- Python adapters advance to 0.3.9 and the browser runner to 0.1.4. The tool catalogue is unchanged.
+
 ## 0.4.33 — 2026-11-02
 
 - Preserve a Tanqeeb record whose publisher left its actual title anchor blank,

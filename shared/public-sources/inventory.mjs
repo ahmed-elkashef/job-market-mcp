@@ -120,7 +120,12 @@ export function normalizeRecord(source, raw, board = null, feedUrl = null, local
     extras={board_id:board, employment_type:raw.kind ?? raw.employment_type ?? null};
   } else throw new SourceError('Unsupported source', 'invalid_argument');
   if (html != null && typeof html !== 'string') throw new SourceError('Description field is not text; no full-body claim', 'malformed_response');
-  const dateBasis = source === 'personio' ? 'provider_createdAt' : ['arbeitnow','recruitee'].includes(source) ? 'provider_created_at' : 'original_publication';
+  const dateBasis = {
+    arbeitnow: 'provider_activity_created_at',
+    himalayas: 'provider_last_updated_pubDate',
+    personio: 'provider_createdAt',
+    recruitee: 'provider_created_at',
+  }[source] ?? 'original_publication';
   return {source, id:id == null || id === '' ? null : String(id), title:title ?? null, company:company ?? null,
     location:location || null, url:url || null, ...extras, publication:publication(date, dateBasis),
     description:plainText(html), description_html:String(html ?? ''), description_characters:plainText(html).length, description_html_characters:String(html ?? '').length, description_status:plainText(html) ? 'captured_full_provider_field' : 'missing', source_data:structuredClone(raw)};
@@ -132,12 +137,12 @@ function metadata(value) {
   return value;
 }
 function nextArbeitnow(url) {
-  if (!url) return null;
-  const next = new URL(url);
-  const page=Number(next.searchParams.get('page'));
-  if (next.origin !== 'https://www.arbeitnow.com' || next.pathname !== '/api/job-board-api' || !Number.isSafeInteger(page) || page < 1)
-    throw new SourceError('Unexpected Arbeitnow continuation URL', 'invalid_continuation');
-  return page;
+  if (url === null) return null;
+  const invalid = () => new SourceError('Missing or unexpected Arbeitnow continuation URL', 'invalid_continuation');
+  if (typeof url !== 'string') throw invalid();
+  const parts = /^https:\/\/www\.arbeitnow\.com\/api\/job-board-api\?page=([1-9]\d*)$/.exec(url);
+  if (!parts || !Number.isSafeInteger(Number(parts[1]))) throw invalid();
+  return Number(parts[1]);
 }
 export const inventoryTools = [
   {name:'get_public_inventory',description:'Capture every record in one native page/feed with unmodified source metadata and full descriptions. No keyword or role filtering. Complete current response is not a historical archive. Metadata cards can be followed by snapshot detail retrieval.',inputSchema:{type:'object',properties:{
@@ -179,7 +184,15 @@ export class InventoryClient {
     }
     if (source==='personio') {rows=personioPositions(text);body=null;}
     else { try { body=JSON.parse(text); } catch {throw new SourceError('Source did not return valid JSON','malformed_response');} }
-    if(source==='arbeitnow') {rows=array(body.data,'data');const observed=body.meta?.current_page??body.meta?.page;const next=nextArbeitnow(body.links?.next);if((observed!==undefined&&observed!==page)||(next!==null&&next!==page+1))throw new SourceError('Arbeitnow returned a different/reverse/skipped page','invalid_continuation');pagination={kind:'native_page',page,next:next?{page:next}:null,total:body.meta?.total??null,links:body.links??null};}
+    if (source === 'arbeitnow') {
+      rows = array(body.data, 'data');
+      const observed = body.meta?.current_page ?? body.meta?.page;
+      const next = nextArbeitnow(body.links?.next);
+      if ((observed !== undefined && observed !== page) || (next !== null && (next !== page + 1 || !rows.length))) {
+        throw new SourceError('Arbeitnow returned a different, empty nonterminal, or nonconsecutive page', 'invalid_continuation');
+      }
+      pagination = {kind:'native_page', page, next:next === null ? null : {page:next}, total:body.meta?.total ?? null, links:body.links};
+    }
     if(source==='remotive') {rows=array(body.jobs,'jobs');notices=[body['0-legal-notice']??body['legal-notice']??body.legal_notice??null,'Remotive public feed is delayed by 24 hours; retain attribution and original application links. Review provider reuse terms before redistribution.'].filter(Boolean);}
     if(source==='remoteok') { const entries=array(body,'response'); rows=entries.filter(x=>x&&(x.position||x.id));notices=entries.filter(x=>!x?.position&&!x?.id); }
     if(source==='himalayas') { rows=array(body.jobs,'jobs');const total=body.totalCount??null;const offset=body.offset??(page-1)*20;const limit=body.limit??20;if(!Number.isSafeInteger(limit)||limit<1||offset!==(page-1)*limit||(total!==null&&(!Number.isSafeInteger(total)||total<0)))throw new SourceError('Himalayas page/offset/limit mismatch','invalid_continuation');pagination={kind:'native_page',page,offset,limit,total,next:rows.length&&typeof total==='number'&&offset+rows.length<total?{page:page+1}:null,provider_cursor:body.nextCursor??null};notices=['Attribute Himalayas and retain original application links.',body.comments??body._comments??null].filter(Boolean); }

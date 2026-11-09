@@ -121,7 +121,7 @@ test('delayed Tanqeeb Next awaits the observed document before checking native r
   const waits=tab.calls.filter(x=>x[0]==='expectNavigation');
   assert.equal(waits.length,2);
   assert.equal(waits[0][1].url,TQ.replace('/jobs/search','/jobs/search/page/2').replace('&order_by=most_recent',''));
-  assert.ok(waits.every(x=>x[1].waitUntil==='domcontentloaded' && x[1].timeoutMs>0 && x[1].timeoutMs<=10000));
+  assert.ok(waits.every(x=>x[1].waitUntil==='commit' && x[1].timeoutMs>0 && x[1].timeoutMs<=10000));
   assert.equal(tab.calls.filter(x=>x[0]==='goto').length,1);
 });
 
@@ -206,6 +206,24 @@ test('a late native Tanqeeb successor resumes only the exact saved observed Next
   assert.equal(tab.calls.filter(x=>x[0]==='goto').length,0);
   assert.ok(tab.calls.filter(x=>x[0]==='evaluate' && x[1]==='inspectBoardDOM').length>=4);
   assert.deepEqual(sink.captures.map(x=>x.meta.resume),[false]);
+});
+
+test('an exact late Tanqeeb successor can hydrate from a shell without replay',async()=>{
+  for (const timeout of [false,true]) {
+    const tab=new FakeTab({pages:4});tab.page=3;tab.selected='2';tab.hydrating=true;
+    tab.url=TQ.replace('/jobs/search','/jobs/search/page/3').replace('&order_by=most_recent','');
+    tab.hydrationTimeout=timeout;
+    const sink=new FakeSink(tab,{cursor:{url:TQ.replace('/jobs/search','/jobs/search/page/2'),
+      stable_ids:['100002'],native_page_number:2,source_continuation:{observed_next_control_href:tab.url}}});
+    const result=await runBoardCapture({tab,sink,source:'tanqeeb',maxPages:1});
+    assert.equal(result.counts.recoveries,0);
+    assert.ok(!tab.calls.some(x=>x[0]==='goto'));
+    if (timeout) {
+      assert.equal(result.status,'native_hydration_timeout');
+      assert.equal(sink.cursor.native_page_number,2);
+      assert.equal(sink.captures.length,0);
+    } else assert.deepEqual(sink.captures.map(x=>x.state.native_page_number),[3]);
+  }
 });
 
 test('a navigation committing at the invocation deadline is captured next invocation without replay or model loss',async()=>{
@@ -302,6 +320,25 @@ test('canonical verification detail queue is hydrated automatically and only thr
   const result=await runBoardCapture({tab,sink,source:'tanqeeb',maxPages:2,collectDetails:true});
   assert.equal(result.counts.details,1);assert.equal(sink.details[0].kind,'detail');assert.deepEqual(sink.queue,[]);
   assert.ok(!JSON.stringify(result).includes('html'));
+});
+
+test('separate canonical details preserve the native list position across bounded calls',async()=>{
+  for (const source of ['tanqeeb','forasna']) {
+    const tab=new FakeTab({source,pages:4});const detailTab=new FakeTab({source});
+    const sink=new FakeSink(tab);
+    await runBoardCapture({tab,detailTab,sink,source,maxPages:2});
+    assert.equal(sink.cursor.native_page_number,2);
+    const url=source==='tanqeeb' ? 'https://egypt.tanqeeb.com/jobs-in-middle-east/all/jobs/0100002.html'
+      : 'https://forasna.com/job/p/constructed-100002';
+    sink.queue=[{url}];
+    const result=await runBoardCapture({tab,detailTab,sink,source,maxPages:1,collectDetails:true});
+    assert.equal(result.counts.details,1);
+    assert.equal(result.counts.recoveries,0);
+    assert.equal(sink.cursor.native_page_number,3);
+    assert.equal(tab.calls.filter(x=>x[0]==='goto').length,1);
+    assert.ok(!tab.calls.some(x=>x[0]==='evaluate' && x[1]==='inspectDetailDOM'));
+    assert.deepEqual(detailTab.calls.filter(x=>x[0]==='goto').map(x=>x[1]),[url]);
+  }
 });
 
 test('foreign/account/apply detail URLs fail before browser navigation',async()=>{

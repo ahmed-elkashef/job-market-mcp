@@ -157,7 +157,11 @@ def parse_page(source: str, body: bytes | str, request_url: str) -> dict:
                 },
                 "source_description_field": native_body_field,
                 "publication_raw": row.get(publication_field),
-                "publication_basis": "native_field_not_observation; original_creation_semantics_need_validation",
+                "publication_basis": (
+                    "provider_activity_created_at"
+                    if source == "arbeitnow"
+                    else "native_field_not_observation; original_creation_semantics_need_validation"
+                ),
                 "description_basis": "complete_native_HTML_field_preserved_without_clipping_not_model_read",
                 "attribution": {
                     "source": "Arbeitnow" if source == "arbeitnow" else "The Muse",
@@ -190,7 +194,8 @@ def parse_page(source: str, body: bytes | str, request_url: str) -> dict:
             "Preserve native bodies and dates; country and part-time fit need separate screening.",
             "The Muse ranking is not chronological; no publication-date stopping boundary is proved."
             if source == "themuse"
-            else "Remote metadata does not prove worldwide worker eligibility.",
+            else "Remote metadata does not prove worldwide worker eligibility. "
+            "Arbeitnow created_at is source activity, not verified original publication.",
             "The Muse requires registered app access beyond testing; 500 anonymous tests/hour, 3600 registered/hour."
             if source == "themuse"
             else "No official numeric rate limit is established; stop on access/rate errors.",

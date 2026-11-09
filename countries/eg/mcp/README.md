@@ -207,13 +207,15 @@ The complete API body is retained once as `description`, with every other native
 inject an authorized source Tab and a trusted private checkpoint sink, then call:
 
 ```js
-await runBoardCapture({tab, sink, source: 'tanqeeb', workModel: 'part_time',
+await runBoardCapture({tab, detailTab, sink, source: 'tanqeeb', workModel: 'part_time',
   maxPages: 20, maxMillis: 45000, collectDetails: true});
 ```
 
 The runner controls native filters, observes actual card membership, clicks native
 Next controls, saves selected DOM, resumes bounded chunks and captures only briefs
-queued by the private intake. It has no browser launcher, network client, session
+queued by the private intake. Pass a separate, task-owned `detailTab` to keep the
+listing tab at its exact native cursor while briefs are read. The single-tab form
+is still supported. It has no browser launcher, network client, session
 export, CAPTCHA solver or application actions. Browser access must be available
 through the authorized runtime. Native dates and candidate fit still require
 independent evidence and review; capture completion is not market coverage.

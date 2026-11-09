@@ -13,6 +13,7 @@ import re
 import sys
 import time
 from datetime import datetime, timezone
+from hashlib import sha256
 from urllib.parse import parse_qs, urlencode, urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
@@ -31,11 +32,14 @@ from .boards import (
 )
 from .mostaql import canonical_project_url, parse_mostaql_detail
 
+JOBICY_API = "https://jobicy.com/api/jobs"
+JOBICY_PAGE_SIZE = 100
+
 SOURCES = {
     **BOARD_URLS,
     "bayt": "https://www.bayt.com/en/egypt/jobs/",
     "himalayas": "https://himalayas.app/jobs/api/search",
-    "jobicy": "https://jobicy.com/api/v2/remote-jobs",
+    "jobicy": JOBICY_API,
     "mostaql": "https://mostaql.com/projects",
 }
 
@@ -64,8 +68,10 @@ def page_url(
         else {"page": page}
     )
     if source == "jobicy":
-        params = {"count": 200}
-        if cursor:
+        params = {"count": JOBICY_PAGE_SIZE}
+        if cursor is not None:
+            if not isinstance(cursor, str) or not cursor.strip():
+                raise ValueError("Jobicy requires a nonempty opaque cursor")
             params["cursor"] = cursor
     if source in {"bayt", "mostaql"} and page == 1:
         return SOURCES[source]
@@ -76,17 +82,79 @@ def text(node) -> str:
     return clean_text(node)
 
 
+def _parse_jobicy_page(body: str, url: str) -> dict:
+    data = json.loads(body)
+    if (
+        not isinstance(data, dict)
+        or data.get("success") is not True
+        or type(data.get("statusCode")) is not int
+        or data["statusCode"] != 200
+    ):
+        raise ValueError("Jobicy did not return a successful jobs response")
+    jobs = data.get("jobs")
+    if not isinstance(jobs, list) or any(not isinstance(job, dict) for job in jobs):
+        raise ValueError("Jobicy response has no valid jobs array")
+    count = data.get("jobCount")
+    if type(count) is not int or count != len(jobs) or count > JOBICY_PAGE_SIZE:
+        raise ValueError("Jobicy jobCount disagrees with the returned page")
+
+    requested = urlsplit(url)
+    parameters = parse_qs(requested.query, keep_blank_values=True)
+    requested_cursor = parameters.get("cursor", [None])[0]
+    if url != page_url("jobicy", cursor=requested_cursor):
+        raise ValueError("Jobicy request does not match the canonical feed and filters")
+    expected = {"count": JOBICY_PAGE_SIZE}
+    if requested_cursor is not None:
+        expected["cursor"] = requested_cursor
+    applied = data.get("appliedFilters")
+    if not isinstance(applied, dict) or type(applied.get("count")) is not int or applied != expected:
+        raise ValueError("Jobicy appliedFilters disagree with the requested feed or cursor")
+
+    has_more = data.get("hasMore")
+    next_cursor = data.get("nextCursor")
+    if type(has_more) is not bool or "nextCursor" not in data:
+        raise ValueError("Jobicy requires explicit hasMore and nextCursor fields")
+    if has_more:
+        if (
+            not isinstance(next_cursor, str)
+            or not next_cursor.strip()
+            or next_cursor == requested_cursor
+        ):
+            raise ValueError("Jobicy continuation is missing, invalid or repeated")
+    elif next_cursor is not None:
+        raise ValueError("Jobicy terminal page must return a null nextCursor")
+
+    return {
+        "listings": jobs,
+        "next_cursor": next_cursor,
+        "has_more": has_more,
+        "reported_total": None,  # Jobicy jobCount describes only this page.
+        "returned_offset": None,
+        "returned_limit": applied["count"],
+        "returned_count": count,
+        "applied_filters": applied,
+        "source_api_version": data.get("apiVersion"),
+        "source_last_update": data.get("lastUpdate"),  # The newest publication on this page.
+        "description_basis": "source_full_description_field_not_yet_reviewed",
+        "date_basis": "source_pubDate_timezone_and_original_publication_unverified",
+        "limits": [
+            "Public Jobicy feed is a moving seven-day window with a three-hour publication delay.",
+            "Jobicy Fair Use permits fresh polling no more than hourly; cursor pages within one pass are permitted.",
+        ],
+    }
+
+
 def parse_page(source: str, body: str, url: str) -> dict:
     if source in BOARD_URLS:
         return parse_board_page(source, body, url)
-    if source in {"himalayas", "jobicy"}:
+    if source == "jobicy":
+        return _parse_jobicy_page(body, url)
+    if source == "himalayas":
         data = json.loads(body)
         if not isinstance(data.get("jobs"), list) or data.get("success") is False:
             raise ValueError("Source response has no valid jobs array")
         jobs = data["jobs"]
         cursor = data.get("nextCursor")
-        if source == "jobicy" and data.get("hasMore") is True and not cursor:
-            raise ValueError("Source reports more jobs without a continuation cursor")
         # Preserve original fields, full HTML descriptions and exact restrictions.
         # Empty restrictions are uncertain, not automatically Egypt-eligible.
         return {
@@ -100,11 +168,6 @@ def parse_page(source: str, body: str, url: str) -> dict:
             "description_basis": "source_full_description_field_not_yet_reviewed",
             "date_basis": "source_pubDate_timezone_and_original_publication_unverified",
             "limits": [
-                "Public Jobicy feed is a moving seven-day window; older missed supply unavailable.",
-                "Jobicy Fair Use permits fresh polling no more than hourly; cursor pages within one pass are permitted.",
-            ]
-            if source == "jobicy"
-            else [
                 "Country result may include worldwide listings; verify each description and time zone.",
                 "Preserve Himalayas attribution and canonical links; do not export jobs to third-party listing aggregators.",
             ],
@@ -269,7 +332,7 @@ class SameHostRedirects(HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def read(url: str) -> str:
+def read_response(url: str) -> tuple[str, str]:
     request = Request(
         url,
         headers={
@@ -284,7 +347,11 @@ def read(url: str) -> str:
         body = response.read(8_000_001)
         if len(body) > 8_000_000:
             raise SourceFailure("Response exceeds safety limit; record source limitation")
-        return body.decode("utf-8")
+        return body.decode("utf-8"), response.url
+
+
+def read(url: str) -> str:
+    return read_response(url)[0]
 
 
 def query(
@@ -300,6 +367,8 @@ def query(
         raise ValueError(
             "Only Jobicy/WUZZUF taxonomy requests without detail/continuation are supported"
         )
+    if taxonomy and cursor is not None:
+        raise ValueError("Taxonomy queries do not accept a continuation cursor")
     if cursor is not None and source != "jobicy":
         raise ValueError("Only Jobicy accepts an opaque cursor")
     requested = (
@@ -347,7 +416,13 @@ def query(
         "reviewed_by_model": False,
     }
     try:
-        body = read(requested)
+        if source == "jobicy" and not taxonomy:
+            body, resolved = read_response(requested)
+            result.update(
+                resolved_url=resolved, response_sha256=sha256(body.encode("utf-8")).hexdigest()
+            )
+        else:
+            body = read(requested)
         data = (
             json.loads(body)
             if taxonomy

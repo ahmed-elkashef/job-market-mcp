@@ -1,5 +1,8 @@
 # Job Market MCP
 
+Release v0.4.35 uses the documented Jobicy public feed and validates page counts,
+filter echoes and cursor completion. Python source adapters are 0.3.10.
+
 Release v0.4.34 preserves Tanqeeb continuation through delayed rendering,
 allows separate listing and detail tabs for Tanqeeb and Forasna, and checks
 Arbeitnow API continuation and source clocks. Python adapters are 0.3.9 and

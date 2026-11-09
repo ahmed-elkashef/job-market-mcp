@@ -188,6 +188,28 @@ class SecondaryBoardTests(unittest.TestCase):
             with self.subTest(body=wrong), self.assertRaises(ValueError):
                 parse_page("tanqeeb", wrong, board_page_url("tanqeeb"))
 
+    def test_regional_tanqeeb_card_preserves_page_without_authorizing_detail(self):
+        first, next_url = board_page_url("tanqeeb"), board_page_url("tanqeeb", 2)
+        body = tanqeeb_page(model="-1", next_url=next_url)
+        region_url = "/jobs-in-saudi/all/jobs/0100002.html"
+        regional = (
+            '<article data-job-id="100002" data-job-type="Freelance/ Project" data-job-closed="0">'
+            f'<h2><a href="{region_url}">Constructed regional role</a></h2>'
+            '<span class="search-job-workplace-location">Remote - Saudi - Riyadh</span></article>'
+        )
+        mixed = body.replace("</article>", "</article>" + regional, 1)
+        parsed = parse_page("tanqeeb", mixed, first)
+        self.assertEqual([row["id"] for row in parsed["listings"]], ["100001", "100002"])
+        self.assertEqual(parsed["observed_next_control_href"], next_url)
+        self.assertEqual(parsed["listings"][1]["canonical_detail_scope"], "unqualified_regional_route")
+        self.assertEqual(parsed["listings"][1]["location"], "Remote - Saudi - Riyadh")
+        with self.assertRaises(ValueError):
+            parse_detail("tanqeeb", mixed, "https://egypt.tanqeeb.com" + region_url)
+        for wrong in [region_url.replace("100002", "100003"), region_url.replace("saudi", "unknown"),
+                      "https://foreign.invalid" + region_url]:
+            with self.subTest(wrong=wrong), self.assertRaises(ValueError):
+                parse_page("tanqeeb", mixed.replace(region_url, wrong), first)
+
     def test_native_next_scope_and_identity_must_match(self):
         first = board_page_url("tanqeeb")
         for wrong in [board_page_url("tanqeeb", 2).replace("country=213", "country=113"), first]:

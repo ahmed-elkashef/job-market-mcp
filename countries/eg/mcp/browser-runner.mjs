@@ -292,16 +292,22 @@ async function next(tab,source,model,expectedPage,deadline,observedHref) {
   try {
     if (source==='tanqeeb') {
       await tab.playwright.expectNavigation(()=>control.click({timeoutMs}),
-        {url:target,waitUntil:'domcontentloaded',timeoutMs});
+        {url:target,waitUntil:'commit',timeoutMs});
     } else await control.click();
   }
   catch (error) {
     let reached=false;
     try {
       const destination=publicURL(source,await tabURL(tab),'page',model);
-      await fresh(tab);
-      const actual=await tab.playwright.evaluate(inspectBoardDOM,{source});
-      reached=Boolean(expectedPage && actual.native_page_number===expectedPage && (source!=='tanqeeb' || destination===target));
+      if (source==='tanqeeb') {
+        // A committed document may still be an empty shell. Exact destination
+        // recovery only hands off to settled(), which checks the new cards.
+        reached=destination===target;
+      } else {
+        await fresh(tab);
+        const actual=await tab.playwright.evaluate(inspectBoardDOM,{source});
+        reached=Boolean(expectedPage && actual.native_page_number===expectedPage);
+      }
     } catch { /* A changed/foreign identity cannot satisfy native Next. */ }
     if (!reached) throw error;
   }
@@ -329,7 +335,7 @@ function assertBinding(status,source,model) {
  * The sink owns frozen context, immutable evidence, dedupe and person filtering.
  * Budgets pause acquisition; they never mean source exhaustion or candidate fit.
  */
-export async function runBoardCapture({tab,sink,source,workModel='part_time',maxPages=20,maxMillis=45000,onProgress,collectDetails=false}) {
+export async function runBoardCapture({tab,detailTab=tab,sink,source,workModel='part_time',maxPages=20,maxMillis=45000,onProgress,collectDetails=false}) {
   if (!['tanqeeb','forasna'].includes(source) || (source==='tanqeeb' ? !TANQEEB_MODELS[workModel] : !['part_time','all'].includes(workModel))) throw Error('Unsupported verified source/model');
   if (!Number.isSafeInteger(maxPages) || maxPages<1 || !Number.isFinite(maxMillis) || maxMillis<=0 || maxMillis>45000) throw Error('Positive page budget and maxMillis<=45000 required');
   for (const method of ['status','capture','detail','limit','recover']) if (typeof sink?.[method]!=='function') throw Error('A trusted checkpointing sink is required');
@@ -362,11 +368,11 @@ export async function runBoardCapture({tab,sink,source,workModel='part_time',max
       const identity=detailIdentity(source,item.url),url=identity.url;
       if (visited.has(identity.id)) continue;
       visited.add(identity.id);
-      await navigate(tab,source,url,'detail',workModel);
+      await navigate(detailTab,source,url,'detail',workModel);
       let prior=null,ready=false,hydrationWaited=false;
       for (let probe=0;probe<12 && Date.now()<deadline;probe+=1) {
-        await fresh(tab);
-        const actual=await tab.playwright.evaluate(inspectDetailDOM,{source,expectedURL:url});
+        await fresh(detailTab);
+        const actual=await detailTab.playwright.evaluate(inspectDetailDOM,{source,expectedURL:url});
         if (actual.gate) return 'source_barrier';
         if (!actual.ready && !hydrationWaited) {
           // Scope and source ID were checked by inspectDetailDOM before this
@@ -376,7 +382,7 @@ export async function runBoardCapture({tab,sink,source,workModel='part_time',max
           const remaining=deadline-Date.now();
           if (remaining<=0) return 'time_budget';
           const selector=source==='tanqeeb' ? '#jobDescriptionBody' : '.job-more-info';
-          try {await tab.playwright.locator(selector).first().waitFor({state:'visible',timeoutMs:Math.min(10000,remaining)});}
+          try {await detailTab.playwright.locator(selector).first().waitFor({state:'visible',timeoutMs:Math.min(10000,remaining)});}
           catch {return Date.now()>=deadline ? 'time_budget' : 'detail_hydration_timeout';}
           prior=null;continue;
         }
@@ -385,7 +391,7 @@ export async function runBoardCapture({tab,sink,source,workModel='part_time',max
       }
       if (!ready) return Date.now()>=deadline ? 'time_budget' : 'detail_unavailable';
       let capture;
-      try {capture=await tab.playwright.evaluate(captureEgyptBoardDOM,{source,kind:'detail'});} catch {return 'detail_unavailable';}
+      try {capture=await detailTab.playwright.evaluate(captureEgyptBoardDOM,{source,kind:'detail'});} catch {return 'detail_unavailable';}
       if (detailIdentity(source,capture.url).id!==identity.id) throw Error('Canonical detail identity changed');
       const accepted=await sink.detail(capture);
       if (accepted?.status!=='ok') return 'detail_intake_failed';
@@ -413,15 +419,22 @@ export async function runBoardCapture({tab,sink,source,workModel='part_time',max
       candidate.url=publicURL(source,candidate.url,'page',workModel);
       const samePage=(cursor.native_page_number && candidate.native_page_number===cursor.native_page_number) || (!cursor.native_page_number && candidate.url===cursor.url);
       const observedNext=cursor.source_continuation?.observed_next_control_href;
-      const lateSuccessor=source==='tanqeeb' && Number.isSafeInteger(cursor.native_page_number) &&
-        candidate.native_page_number===cursor.native_page_number+1 && typeof observedNext==='string' &&
+      const nextPage=Number.isSafeInteger(cursor.native_page_number) ? cursor.native_page_number+1 : null;
+      const lateSuccessor=source==='tanqeeb' && nextPage!==null && typeof observedNext==='string' &&
         candidate.url===publicURL(source,observedNext,'page',workModel) &&
-        candidate.stable_ids.some(id=>!(cursor.stable_ids || []).includes(id));
-      if (!membership(candidate,source,workModel) && (samePage || lateSuccessor)) {
-        const result=await settled(tab,source,workModel,deadline,lateSuccessor ? cursor : null,candidate.native_page_number);
+        Number(new URL(candidate.url).pathname.match(/\/page\/(\d+)\/?$/)?.[1])===nextPage &&
+        (!candidate.rows.length || (candidate.native_page_number===nextPage &&
+          candidate.stable_ids.some(id=>!(cursor.stable_ids || []).includes(id))));
+      if (lateSuccessor || (samePage && !membership(candidate,source,workModel))) {
+        const result=await settled(tab,source,workModel,deadline,lateSuccessor ? cursor : null,
+          lateSuccessor ? nextPage : candidate.native_page_number);
         if (!result.reason) {
           state=result.state; needsInitialization=false;
           if (lateSuccessor) replaying=false;
+        } else if (lateSuccessor && ['native_hydration_timeout','time_budget'].includes(result.reason)) {
+          // Leave the persisted cursor intact. Seed replay would repeat all
+          // accepted pages and can lose the already committed successor.
+          return limit(result.reason);
         }
       }
     } catch { /* Safe source reset below, never inspect account/foreign pages. */ }

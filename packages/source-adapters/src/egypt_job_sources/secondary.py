@@ -56,7 +56,7 @@ def page_url(source, page=1, work_model=None):
     return f"https://{HOSTS[source]}/en/egypt/jobs" + (f"?page={page}" if page > 1 else "")
 
 
-def validate_url(source, url, *, detail=False):
+def validate_url(source, url, *, detail=False, listing_card=False):
     p = urlsplit(url)
     if (
         source not in HOSTS
@@ -76,8 +76,11 @@ def validate_url(source, url, *, detail=False):
             if q or not re.fullmatch(r"/en/egypt/jobs/[a-z0-9-]+/[1-9]\d*-[^/?#]+", p.path):
                 raise ValueError("Unrecognized canonical Akhtaboot Egypt public detail URL")
             return url
+        # The Egypt-filtered inventory can contain a same-host card linked
+        # through the observed Saudi route. Accept it as listing evidence only.
+        regions = "egypt|middle-east|saudi" if listing_card else "egypt|middle-east"
         if q or not re.fullmatch(
-            r"/jobs-in-(?:egypt|middle-east)/all/jobs/0?[1-9]\d*\.html", p.path
+            rf"/jobs-in-(?:{regions})/all/jobs/0?[1-9]\d*\.html", p.path
         ):
             raise ValueError("Unrecognized canonical Tanqeeb public detail URL")
         return url
@@ -119,8 +122,8 @@ def filter_signature(source, url):
     return path, tuple(sorted((key, tuple(value)) for key, value in q.items()))
 
 
-def source_id(source, url):
-    validate_url(source, url, detail=True)
+def source_id(source, url, *, listing_card=False):
+    validate_url(source, url, detail=True, listing_card=listing_card)
     if source == "akhtaboot":
         return re.search(r"/([1-9]\d*)-[^/]+$", urlsplit(url).path)[1]
     return str(int(re.search(r"/(\d+)\.html$", urlsplit(url).path)[1]))
@@ -288,8 +291,9 @@ def parse_page(source, body, url):
             ):
                 raise ValueError("Tanqeeb card lacks its native ID or unique job link")
             href = urljoin(url, anchors[0].get("href"))
-            if source_id(source, href) != str(int(native_id)):
+            if source_id(source, href, listing_card=True) != str(int(native_id)):
                 raise ValueError("Tanqeeb card identity differs from canonical URL")
+            regional_card_only = urlsplit(href).path.startswith("/jobs-in-saudi/")
             # A publisher can leave the actual title anchor blank while its
             # native identity, work model and continuation remain valid. Keep
             # that sparse record instead of losing the entire source page.
@@ -302,6 +306,8 @@ def parse_page(source, body, url):
                     "url": href,
                     "title": title,
                     **({"title_status": "publisher_blank"} if not title else {}),
+                    **({"canonical_detail_scope": "unqualified_regional_route"}
+                       if regional_card_only else {}),
                     "card_text": _text(article),
                     "employment_type_raw": article.get("data-job-type"),
                     "native_closed_raw": closed,

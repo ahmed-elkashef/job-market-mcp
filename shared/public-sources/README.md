@@ -49,7 +49,12 @@ feed was captured. It does not mean the whole market or a historical interval is
 complete. Pages can move, feeds can remove old jobs, and date-only or timezone
 uncertain publication values remain unresolved. Keep immutable checkpoints,
 deduplicate stable IDs, check repeated pages, and quarantine uncertain interval
-dates in the consuming workflow.
+dates in the consuming workflow. Himalayas `pubDate` is the last update.
+Arbeitnow's `created_at` reflects source activity and can be later than the
+publisher's original date. Both values remain available with their own clock
+basis. Verify the first-publication instant independently on a permitted route
+before using either source for a new-postings interval. Arbeitnow terminal
+pagination requires the provider's explicit `links.next: null`.
 
 ## Legacy compatibility
 

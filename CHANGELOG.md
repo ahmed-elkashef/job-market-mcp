@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.35 — 2026-11-09
+
+- Use the documented Jobicy public API and a 100-record request. Check the source’s echoed filters, returned count and terminal cursor before accepting a page. Preserve complete returned job fields.
+- Python source adapters advance to 0.3.10. The read-only tool catalogue is unchanged.
+
 ## 0.4.34 — 2026-11-09
 
 - Preserve the Tanqeeb listings cursor during delayed native navigation and use a separate tab for Tanqeeb and Forasna detail reads.

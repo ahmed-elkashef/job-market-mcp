@@ -66,7 +66,12 @@ class PublicPackageTests(unittest.TestCase):
             self.assertFalse(restored["coverage_complete"])
 
     def test_feed_terms_are_explicit_even_for_empty_valid_response(self):
-        jobicy = parse_page("jobicy", '{"jobs":[],"hasMore":false}', "")
+        jobicy = parse_page(
+            "jobicy",
+            '{"success":true,"statusCode":200,"jobs":[],"jobCount":0,'
+            '"hasMore":false,"nextCursor":null,"appliedFilters":{"count":100}}',
+            "https://jobicy.com/api/jobs?count=100",
+        )
         self.assertTrue(any("hourly" in limit for limit in jobicy["limits"]))
         himalayas = parse_page("himalayas", '{"jobs":[]}', "")
         self.assertTrue(any("attribution" in limit for limit in himalayas["limits"]))

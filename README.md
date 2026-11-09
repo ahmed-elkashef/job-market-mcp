@@ -1,5 +1,10 @@
 # Job Market MCP
 
+Release v0.4.34 preserves Tanqeeb continuation through delayed rendering,
+allows separate listing and detail tabs for Tanqeeb and Forasna, and checks
+Arbeitnow API continuation and source clocks. Python adapters are 0.3.9 and
+the browser runner is 0.1.4.
+
 Current parser correction: v0.4.33 preserves a Tanqeeb listing with an explicitly
 blank publisher title when its native ID and unique canonical job link are
 valid. Its empty title is marked `publisher_blank`, and every other record,

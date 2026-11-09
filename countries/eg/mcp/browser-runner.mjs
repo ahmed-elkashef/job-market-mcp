@@ -8,7 +8,7 @@
  */
 import { captureEgyptBoardDOM } from './browser-extract.mjs';
 
-export const BROWSER_RUNNER_VERSION = '0.1.3';
+export const BROWSER_RUNNER_VERSION = '0.1.4';
 const TANQEEB_MODELS = {
   part_time: { value:'2', label:'Part Time' },
   internship: { value:'5', label:'Internship' },

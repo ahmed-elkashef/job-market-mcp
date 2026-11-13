@@ -85,7 +85,7 @@ test('native entities, publisher-name collisions and protected placeholders rema
  const publisher=page('company').replace('<head>','<head><script type="application/ld+json">{"@type":"Organization","name":"Example","url":"https://publisher.example/"}</script>');
  assert.equal(parsePublicPage(publisher,origin+'/startup/example_de','company').company.url,'https://employer.example/');
  const protectedRow=page('company').replace('>Role 0</a>','><span class="__cf_email__" data-cfemail="not-decoded">[email&#160;protected]</span></a>');
- const r=parsePublicPage(protectedRow,origin+'/startup/example_de','company');assert.equal(r.roles[0].native_label_is_protected_placeholder,true);assert.equal(r.roles[0].native_label,'[email protected]');
+ const r=parsePublicPage(protectedRow,origin+'/startup/example_de','company');assert.equal(r.roles[0].native_label_is_protected_placeholder,true);assert.equal(r.roles[0].native_label,'[email\u00a0protected]');
 });
 test('missing SSR, count mismatch, changed canonical, ambiguous lists and wrong company identities fail',()=>{
  for(const s of ['<div id="root"></div>',page().replace('2 live','3 live'),page().replace('rel="canonical"','rel="alternate"'),

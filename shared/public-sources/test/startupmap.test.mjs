@@ -73,6 +73,12 @@ test('company reads preserve source facts and native IDs without following actio
  assert.match(r.full_public_text,/useful business & its products/);assert.equal(calls.length,3);
  assert.ok(calls.every(c=>!c.url.includes('?') && !c.url.includes('/api')));
 });
+test('company role references retain accented native IDs and unlinked native rows',()=>{
+ const accented=page('company').replaceAll('example-role-0','example-k%C3%B6ln-0');
+ assert.equal(parsePublicPage(accented,origin+'/startup/example_de','company').roles[0].native_role_id,'example-köln-0');
+ const unlinked=page('company').replace('<a href="/startup/example_de?apply=example-role-0">Role 0</a>','Role 0');
+ const r=parsePublicPage(unlinked,origin+'/startup/example_de','company');assert.equal(r.roles.length,2);assert.equal(r.roles[0].native_label,'Role 0');assert.equal(r.roles[0].native_role_id,null);
+});
 test('missing SSR, count mismatch, changed canonical, ambiguous lists and wrong company identities fail',()=>{
  for(const s of ['<div id="root"></div>',page().replace('2 live','3 live'),page().replace('rel="canonical"','rel="alternate"'),
   page().replace('</section>','<ul><li>Other</li></ul></section>'),page('company').replace('"name":"Example"','"name":"Other"')]) {

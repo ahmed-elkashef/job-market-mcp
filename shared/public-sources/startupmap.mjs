@@ -133,7 +133,13 @@ export function parsePublicPage(text, url, kind) {
   if (!reported && !explicitEmpty) throw new Error('native_role_count_missing');
   const reportedCount=explicitEmpty?0:Number(reported[1].replaceAll(',',''));
   const roles=rows.map((row,index)=>{
-    const links=list(row.a); if (links.length!==1) throw new Error('native_role_link_structure_changed');
+    const links=list(row.a);
+    if (kind==='company' && links.length===0 && String(nodeText(row)).trim()) {
+      return {occurrence:index+1,native_label:String(nodeText(row)).trim(),native_role_id:null,company_url:url,
+        unfetched_action_reference:null,location_label:row.span?String(nodeText(row.span)):null,
+        description_status:'not_in_public_html',original_publication:null};
+    }
+    if (links.length!==1) throw new Error('native_role_link_structure_changed');
     const label=String(nodeText(links[0])).trim(), href=links[0]['@_href'];
     if (!label || typeof href!=='string') throw new Error('native_role_metadata_missing');
     const target=new URL(href,ORIGIN);let id=null;
@@ -142,7 +148,7 @@ export function parsePublicPage(text, url, kind) {
       if (target.origin!==ORIGIN || target.pathname!==new URL(url).pathname || target.hash
           || [...target.searchParams.keys()].join(',')!=='apply') throw new Error('native_role_reference_changed');
       id=target.searchParams.get('apply');
-      if (!/^[A-Za-z0-9_.-]{1,512}$/.test(id)) throw new Error('invalid_native_role_id');
+      if (!/^[\p{L}\p{M}\p{N}_.-]{1,512}$/u.test(id)) throw new Error('invalid_native_role_id');
     }
     return {occurrence:index+1,native_label:label,native_role_id:id,
       company_url:kind==='city'?target.href:url,

@@ -38,6 +38,20 @@ test('sitemap keeps every company, ignores role partitions, and binds cities to 
  const r=parseSitemap(sitemap);assert.equal(r.companies.length,2);assert.equal(r.cities.length,1);
  assert.equal(r.cities[0].lastmod,'2026-11-01');assert.equal(r.total_sitemap_entries,6);
 });
+test('case-sensitive dotted and hyphenated company IDs are never dropped from the native directory',()=>{
+ const ids=['CRMpli_be','Cuez','bio-sourcing_be','e-invoice','level.works','vidi-x_hr'];
+ const extra=ids.map(id=>`<url><loc>${origin}/startup/${id}</loc></url>`).join('');
+ const r=parseSitemap(sitemap.replace('</urlset>',extra+'</urlset>'));
+ assert.equal(r.companies.length,8);
+ for(const id of ids) assert.equal(resourceUrl(origin+'/startup/'+id,'company'),origin+'/startup/'+id);
+ assert.throws(()=>parseSitemap(sitemap.replace('/startup/other_fr','/startup/new/unknown')));
+});
+test('encoded geographical names use source-exact paths and refuse encoded separators',()=>{
+ const extra=`<url><loc>${origin}/map/reykjav%C3%ADk</loc></url><url><loc>${origin}/jobs/reykjav%C3%ADk</loc></url>`;
+ assert.equal(parseSitemap(sitemap.replace('</urlset>',extra+'</urlset>')).cities.length,2);
+ assert.equal(resourceUrl(origin+'/jobs/reykjav%C3%ADk','city'),origin+'/jobs/reykjav%C3%ADk');
+ assert.throws(()=>resourceUrl(origin+'/jobs/test%2Fcity','city'));
+});
 test('malformed, truncated, duplicate and external sitemap entries fail closed',()=>{
  for(const s of [sitemap.slice(0,-10),sitemap.replace('</urlset>',`<url><loc>${origin}/startup/example_de</loc></url></urlset>`),
    sitemap.replace('/startup/other_fr','/api/private'),sitemap.replace(origin,'https://elsewhere.example'),'<html>challenge</html>']) {
@@ -109,7 +123,7 @@ test('snapshot-bound continuation survives sitemap changes and makes no network 
  } finally {await rm(dir,{recursive:true,force:true});}
 });
 test('invalid types, unsupported filters and missing immutable continuation refuse before IO',async()=>{
- for(const args of [null,[],{kind:'companies',query:'IT'},{kind:'companies',offset:1},{kind:'cities',offset:null},
+ for(const args of [null,[],{kind:'companies',query:'IT'},{kind:'companies',toString:'x'},{kind:'companies',offset:1},{kind:'cities',offset:null},
   {kind:'cities',offset:'0'},{kind:'cities',limit:null},{kind:'cities',limit:501},{kind:'cities',snapshot_sha256:['a'.repeat(64)]}]) {
   const r=await startupmap('startupmap_directory',args,{cacheDir:'/unused',fetchImpl:()=>assert.fail()});assert.equal(r.status,'source_limited');
  }

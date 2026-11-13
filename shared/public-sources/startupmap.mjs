@@ -8,6 +8,12 @@ const ORIGIN = 'https://startupmap.one';
 const AGENT = 'job-market-mcp';
 const USER_AGENT = `${AGENT}/0.4 public-source-reader`;
 const MAX_BYTES = 5 * 1024 * 1024;
+const COMPANY_PATH = /^\/startup\/[A-Za-z0-9_.-]+$/;
+const geographicPath = (pathname,prefix) => {
+  if (!pathname.startsWith(prefix) || pathname.slice(prefix.length).includes('/')) return false;
+  try {return /^[\p{L}\p{N}-]+$/u.test(decodeURIComponent(pathname.slice(prefix.length)));}
+  catch {return false;}
+};
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const object = properties => ({type:'object', properties, additionalProperties:false});
 const annotations = {readOnlyHint:true, destructiveHint:false, openWorldHint:true};
@@ -29,9 +35,8 @@ export const startupmapTools = [
 export function resourceUrl(value, kind) {
   if (typeof value !== 'string' || value.length > 256) throw new Error('invalid_public_resource_url');
   const u = new URL(value);
-  const route = kind === 'city' ? /^\/jobs\/[a-z0-9-]+$/ : /^\/startup\/[a-z0-9_]+$/;
   if (u.origin !== ORIGIN || u.username || u.password || u.port || u.search || u.hash
-      || u.href !== value || !route.test(u.pathname)) throw new Error('invalid_public_resource_url');
+      || u.href !== value || !(kind==='city'?geographicPath(u.pathname,'/jobs/'):COMPANY_PATH.test(u.pathname))) throw new Error('invalid_public_resource_url');
   return u.href;
 }
 
@@ -91,10 +96,14 @@ export function parseSitemap(text) {
     return {url:u.href,lastmod:row.lastmod??null};
   });
   if (new Set(urls.map(r=>r.url)).size!==urls.length) throw new Error('duplicate_sitemap_locations');
-  const maps=new Set(urls.filter(r=>/^\/map\/[a-z0-9-]+$/.test(new URL(r.url).pathname)).map(r=>new URL(r.url).pathname.split('/')[2]));
+  // Provider IDs are case-sensitive and can contain dots or hyphens. Refuse an
+  // unknown company contract rather than silently losing directory entries.
+  const companies=urls.filter(r=>new URL(r.url).pathname.startsWith('/startup/'));
+  if(companies.some(r=>!COMPANY_PATH.test(new URL(r.url).pathname))) throw new Error('unrecognized_company_directory_route');
+  const maps=new Set(urls.filter(r=>geographicPath(new URL(r.url).pathname,'/map/')).map(r=>new URL(r.url).pathname.split('/')[2]));
   return {total_sitemap_entries:urls.length,
-    cities:urls.filter(r=>/^\/jobs\/[a-z0-9-]+$/.test(new URL(r.url).pathname)&&maps.has(new URL(r.url).pathname.split('/')[2])),
-    companies:urls.filter(r=>/^\/startup\/[a-z0-9_]+$/.test(new URL(r.url).pathname))};
+    cities:urls.filter(r=>geographicPath(new URL(r.url).pathname,'/jobs/')&&maps.has(new URL(r.url).pathname.split('/')[2])),
+    companies};
 }
 
 const list=x=>x===undefined?[]:Array.isArray(x)?x:[x];
@@ -131,7 +140,7 @@ export function parsePublicPage(text, url, kind) {
       if (target.origin!==ORIGIN || target.pathname!==new URL(url).pathname || target.hash
           || [...target.searchParams.keys()].join(',')!=='apply') throw new Error('native_role_reference_changed');
       id=target.searchParams.get('apply');
-      if (!/^[a-z0-9_-]{1,512}$/.test(id)) throw new Error('invalid_native_role_id');
+      if (!/^[A-Za-z0-9_.-]{1,512}$/.test(id)) throw new Error('invalid_native_role_id');
     }
     return {occurrence:index+1,native_label:label,native_role_id:id,
       company_url:kind==='city'?target.href:url,

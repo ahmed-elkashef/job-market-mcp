@@ -6,7 +6,7 @@ import {ListToolsRequestSchema,CallToolRequestSchema} from '@modelcontextprotoco
 import {startupmap,startupmapTools} from './startupmap.mjs';
 import {startupmapSnapshot,startupmapSnapshotTools} from './startupmap-snapshot.mjs';
 
-const server=new Server({name:'startupmap-public-reader',version:'1.0.0'},{capabilities:{tools:{}}});
+const server=new Server({name:'startupmap-public-reader',version:'1.1.0'},{capabilities:{tools:{}}});
 server.setRequestHandler(ListToolsRequestSchema,async()=>({tools:[...startupmapTools,...startupmapSnapshotTools]}));
 server.setRequestHandler(CallToolRequestSchema,async({params})=>{
   const reader=startupmapSnapshotTools.some(t=>t.name===params.name)?startupmapSnapshot:startupmap;

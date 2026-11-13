@@ -177,6 +177,7 @@ export const startupmapCapabilities = {
   excluded:['/api','/admin','/settings','/matches','account/profile operations','application action links'],
   limits:['Public metadata and company text only; employer originals are needed for full job descriptions.',
     'The dynamic /jobs UI and personalized matches are not reproduced by this adapter.',
+    'Company-page server-rendered role lists can stop at 50 while the public Jobs UI shows more; exhausting company partitions does not exhaust all vacancies.',
     'A public sitemap or matching page count is not complete national, historical-week or applicant-fit coverage.',
     'Sitemap lastmod is not a job publication date. City occurrences have no verified stable vacancy ID.',
     'Company headquarters and portal location labels do not prove actual role worksite or hybrid eligibility.'],

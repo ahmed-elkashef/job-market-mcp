@@ -39,6 +39,10 @@ has stopped before removing it; the reader never kills another process.
 
 This establishes all accessible **published company partitions**, not an atomic
 provider database export or a historical week. Record each observation time.
+Company-page server-rendered role lists can stop at 50 even when the public
+Jobs UI lists more. Exhausting every company partition therefore does not
+establish a complete vacancy inventory. Use the permitted public UI when a
+consumer needs that additional supply, and keep its separate evidence.
 The consuming workflow owns its first-seen baseline, future weekly differences,
 geography review, employer full-text reads and individual application decisions.
 

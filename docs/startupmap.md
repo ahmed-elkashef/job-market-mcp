@@ -3,7 +3,7 @@
 This is an independent adapter for StartupMap's public sitemap and HTML pages.
 It is not an official StartupMap API. It needs no account, key or browser.
 
-The same four read-only tools are available through the main federation with
+The same nine read-only tools are available through the main federation with
 the `shared_` prefix, or through the small source-only entry point:
 
 ```sh
@@ -21,6 +21,26 @@ No personal facts, account state, cookies or credentials are read or stored.
 | `startupmap_directory` | Every company or city entry in a native sitemap segment |
 | `startupmap_city_jobs` | All role occurrences in an unfiltered public city page |
 | `startupmap_company` | Public company text, source facts and native role references |
+| `startupmap_country` | Germany's published city memberships and native counts, with capped company lists labelled |
+| `startupmap_snapshot_begin` | A frozen complete public company sitemap and country directory |
+| `startupmap_snapshot_collect` | One resumable batch of at most ten company pages, including explicit empty states |
+| `startupmap_snapshot_retry` | One explicitly recorded failed partition |
+| `startupmap_snapshot_read` | Offline summaries or immutable company/role view segments |
+
+For a first national baseline, freeze a snapshot, then collect every company
+partition using the exact returned offset. Keep foreign-headquartered companies:
+their jobs can be in Germany. Country and city company lists are capped and
+cannot replace the whole public sitemap. Follow `next_segment` unchanged when
+reading saved rows; its content hash binds every page to the same view, even if
+a failed company is collected later. Collection errors remain visible and never
+become zero vacancies. A committed page can be recovered after interruption.
+An existing collection lock requires the operator to establish that its owner
+has stopped before removing it; the reader never kills another process.
+
+This establishes all accessible **published company partitions**, not an atomic
+provider database export or a historical week. Record each observation time.
+The consuming workflow owns its first-seen baseline, future weekly differences,
+geography review, employer full-text reads and individual application decisions.
 
 Use the directory first. City routes must also have a matching native map route;
 role categories are excluded from this geographical catalogue. Page readers

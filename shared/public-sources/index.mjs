@@ -26,6 +26,7 @@ import {oracleTools,oracle} from './oracle.mjs';
 import {personioTools,personio} from './personio.mjs';
 import {rorTools,ror} from './ror.mjs';
 import {startupmapTools,startupmap} from './startupmap.mjs';
+import {startupmapSnapshotTools,startupmapSnapshot} from './startupmap-snapshot.mjs';
 const inventoryClient = new InventoryClient();
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.JOBFLOW_PUBLIC_JOBS_TIMEOUT_MS || 15000);
@@ -41,6 +42,7 @@ const server = new Server(
 
 export const tools = [
   ...startupmapTools,
+  ...startupmapSnapshotTools,
   ...workdayTools,
   ...teamtailorTools,
   ...dvinciTools,
@@ -297,8 +299,8 @@ server.setRequestHandler(CallToolRequestSchema, request => callTool(request.para
 
 export async function callTool(name, args = {}) {
   try {
-    if(startupmapTools.some(tool=>tool.name===name)) {
-      const data=await startupmap(name,args);
+    if([...startupmapTools,...startupmapSnapshotTools].some(tool=>tool.name===name)) {
+      const data=await (startupmapSnapshotTools.some(t=>t.name===name)?startupmapSnapshot:startupmap)(name,args);
       return {...jsonContent(data),structuredContent:data,isError:data.status!=='ok'};
     }
     if(rorTools.some(tool=>tool.name===name)) {

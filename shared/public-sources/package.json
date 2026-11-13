@@ -35,7 +35,8 @@
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
     "startupmap.mjs",
-    "startupmap-server.mjs"
+    "startupmap-server.mjs",
+    "startupmap-snapshot.mjs"
   ],
   "bugs": {
     "url": "https://github.com/ahmed-elkashef/job-market-mcp/issues"

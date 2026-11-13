@@ -70,7 +70,7 @@ export function robotsAllows(text, pathname) {
   return !matches.length || matches[0].allow;
 }
 
-async function boundedGet(url, fetchImpl) {
+export async function boundedGet(url, fetchImpl=fetch) {
   const r=await fetchImpl(url,{redirect:'manual',signal:AbortSignal.timeout(20000),credentials:'omit',
     headers:{'user-agent':USER_AGENT,accept:'text/html,application/xml,text/plain'}});
   if (r.status!==200) {
@@ -128,8 +128,10 @@ export function parsePublicPage(text, url, kind) {
   const reported = kind==='city'
     ? String(nodeText(list(section.p)[0])).match(/^([\d,]+) live startup roles\b/)
     : String(nodeText(section.h2)).match(/^Open roles at .+ \(([\d,]+)\)$/);
-  if (!reported) throw new Error('native_role_count_missing');
-  const reportedCount=Number(reported[1].replaceAll(',',''));
+  const explicitEmpty=kind==='company' && !section.h2 && !rows.length
+    && list(section.p).some(p=>nodeText(p)==='No open roles listed right now.');
+  if (!reported && !explicitEmpty) throw new Error('native_role_count_missing');
+  const reportedCount=explicitEmpty?0:Number(reported[1].replaceAll(',',''));
   const roles=rows.map((row,index)=>{
     const links=list(row.a); if (links.length!==1) throw new Error('native_role_link_structure_changed');
     const label=String(nodeText(links[0])).trim(), href=links[0]['@_href'];
@@ -156,14 +158,14 @@ export function parsePublicPage(text, url, kind) {
   return {kind:kind==='city'?'city_role_metadata':'company_and_role_metadata',url,heading,
     full_public_text:plainText(fragment),public_section_sha256:digest(fragment),
     company:kind==='company'?organization[0]:null,source_json_ld:schemas,
-    reported_role_count:reportedCount,returned_count:roles.length,roles,native_visible_list_complete:true,
+    reported_role_count:reportedCount,returned_count:roles.length,roles,native_visible_list_complete:true,native_empty_state_verified:explicitEmpty,
     source_json_ld_is_complete_role_list:false,full_job_descriptions_available:false,
     original_publication_dates_available:false,national_or_historical_coverage:false};
 }
 
 export const startupmapCapabilities = {
   status:'ok',source:'startupmap',implementation:'independent_public_HTML_adapter',official_api:false,
-  routes:['/robots.txt','/sitemap.xml','/jobs/{sitemap city}','/startup/{sitemap company}'],
+  routes:['/robots.txt','/sitemap.xml','/map/germany','/jobs/{sitemap city}','/startup/{sitemap company}'],
   excluded:['/api','/admin','/settings','/matches','account/profile operations','application action links'],
   limits:['Public metadata and company text only; employer originals are needed for full job descriptions.',
     'The dynamic /jobs UI and personalized matches are not reproduced by this adapter.',

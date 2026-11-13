@@ -2964,7 +2964,9 @@
       "references": [
         "https://startupmap.one/robots.txt",
         "https://startupmap.one/sitemap.xml",
-        "https://startupmap.one/jobs/frankfurt"
+        "https://startupmap.one/jobs/frankfurt",
+        "https://startupmap.one/llms.txt",
+        "https://startupmap.one/map/germany"
       ],
       "routes": [
         {
@@ -2990,11 +2992,41 @@
           "tool": "startupmap_company",
           "public_tool": "shared_startupmap_company",
           "fixed_arguments": {}
+        },
+        {
+          "backend": "public",
+          "tool": "startupmap_country",
+          "public_tool": "shared_startupmap_country",
+          "fixed_arguments": {}
+        },
+        {
+          "backend": "public",
+          "tool": "startupmap_snapshot_begin",
+          "public_tool": "shared_startupmap_snapshot_begin",
+          "fixed_arguments": {}
+        },
+        {
+          "backend": "public",
+          "tool": "startupmap_snapshot_collect",
+          "public_tool": "shared_startupmap_snapshot_collect",
+          "fixed_arguments": {}
+        },
+        {
+          "backend": "public",
+          "tool": "startupmap_snapshot_retry",
+          "public_tool": "shared_startupmap_snapshot_retry",
+          "fixed_arguments": {}
+        },
+        {
+          "backend": "public",
+          "tool": "startupmap_snapshot_read",
+          "public_tool": "shared_startupmap_snapshot_read",
+          "fixed_arguments": {}
         }
       ],
       "limits": [
         "Independent public HTML adapter, not an official StartupMap API or personal account connection. No private API, cookies, scripts, action links or profile operations.",
-        "Native sitemap directories and whole unfiltered city role lists only. Company pages retain native role IDs and public company facts. City duplicates remain separate occurrences.",
+        "Complete public company-sitemap snapshot with sequential resumable partitions; capped country/city company lists are not treated as exhaustive. Retain foreign-HQ companies before German worksite review. Stable, content-addressed cached views preserve paging across retries.",
         "JSON-LD may contain fewer roles than primary HTML. Count reconciliation is local to the native page and does not prove a whole country, frozen historical window or complete provider database.",
         "Full job descriptions and original publication dates are absent from these public pages. Read permitted employer originals separately. Portal city/headquarters labels are not verified worksites or hybrid eligibility.",
         "Current robots checked before each fresh resource. Exact immutable sitemap continuation uses verified private bytes without network. Denials, limits, schema drift or count conflicts fail explicitly."

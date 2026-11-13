@@ -114,3 +114,10 @@ Original `jobshop_capabilities`, `jobshop_inventory` and `jobshop_detail`
 bridge to the [Jobshop native reader](../jobshop/README.md). Native SSR links,
 anchors and independent totals reconcile; complete primary CMS, other context,
 schema/native clocks and form labels stay separate. No search key is used.
+# StartupMap public HTML
+
+The independent [StartupMap reader](../../docs/startupmap.md) exposes public
+sitemap directories, unfiltered city role metadata and company pages. It has a
+small source-only MCP entry point and uses the same implementation in the main
+federation. It does not access accounts or private APIs. Full job descriptions
+and original publication dates require separate employer-source verification.

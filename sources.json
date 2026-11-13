@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-10-30",
+  "as_of": "2026-11-13",
   "countries": [
     {
       "code": "EG",
@@ -1577,7 +1577,7 @@
         "Native links or separately verified numeric page/offset/count continuation remain explicit. Moving pages are not frozen historical coverage.",
         "Original campaign, renewal, activation, expiry and observation clocks remain distinct; no invented employer publication or applicant fit.",
         "No login, application, contact, save, subscription or account action. Raw web/session state is excluded from public fixtures.",
-        "Official search route currently denied by robots. Separately permitted official RSS returned500items covering27–29October only; earlier weekly history is unresolved.",
+        "Official search route currently denied by robots. Separately permitted official RSS returned500items covering27\u201329October only; earlier weekly history is unresolved.",
         "Retain incomplete feed metadata; canonical resource URLs remove client fragments/session markers and provider/path namespaces preserve identity."
       ]
     },
@@ -2704,7 +2704,7 @@
       ],
       "limits": [
         "Original permitted anonymous native primary pages, active-page/enabled continuation checks and complete provided HTML bodies. Homepage featured links, finite directory/profile references and ad counts are separate from vacancy/employer/frozen coverage.",
-        "All56 native ad references across pages20/20/16 and six finite employer profiles were read in a dated engineering traversal. The disabled terminal Next has a root href and is never followed. The portal name is not proof every job is in Hesse; first native job was in Münster.",
+        "All56 native ad references across pages20/20/16 and six finite employer profiles were read in a dated engineering traversal. The disabled terminal Next has a root href and is never followed. The portal name is not proof every job is in Hesse; first native job was in M\u00fcnster.",
         "48 ads have native visible HTML sections,seven have independently published HTML text alternatives beside PDF viewers, and one has no full provided HTML text. Preserve structured descriptions and alternative text independently, including model/start-date conflicts. Untruncated provided HTML is not verification of PDF/employer completeness.",
         "Native PDFs are robots-denied and were not fetched. No viewer rewrite, asset request, Ajax, role query, account, application, email or contact. The one PDF-only ad stays source-limited, never empty or complete."
       ],
@@ -2951,6 +2951,53 @@
         "Cold bounded reader requires an explicit operator JOB_MARKET_CAPTURE_DIR; native first-resolution Retry-After is returned without redirect following or blocking sleep. Later cached segments make no provider request. Invalid/incomplete records, missing countries, corruption and checksum/count drift refuse without partial/empty promotion.",
         "Native 2026-10-30 v2.15 qualification:146716 distinct ROR records;6032 with DE locations and291 with EG locations, all statuses retained. These are dated research-directory memberships and overlap across country scopes, never vacancy totals.",
         "ROR data CC0, GeoNames location attribution per native release references. Original reader implementation; no source scripts, site implementations, candidate data, credentials, accounts, applications or contact exported."
+      ]
+    },
+    {
+      "id": "startupmap",
+      "name": "StartupMap public company and city-job HTML",
+      "countries": [
+        "DE"
+      ],
+      "category": "startup_board",
+      "status": "implemented",
+      "references": [
+        "https://startupmap.one/robots.txt",
+        "https://startupmap.one/sitemap.xml",
+        "https://startupmap.one/jobs/frankfurt"
+      ],
+      "routes": [
+        {
+          "backend": "public",
+          "tool": "startupmap_capabilities",
+          "public_tool": "shared_startupmap_capabilities",
+          "fixed_arguments": {}
+        },
+        {
+          "backend": "public",
+          "tool": "startupmap_directory",
+          "public_tool": "shared_startupmap_directory",
+          "fixed_arguments": {}
+        },
+        {
+          "backend": "public",
+          "tool": "startupmap_city_jobs",
+          "public_tool": "shared_startupmap_city_jobs",
+          "fixed_arguments": {}
+        },
+        {
+          "backend": "public",
+          "tool": "startupmap_company",
+          "public_tool": "shared_startupmap_company",
+          "fixed_arguments": {}
+        }
+      ],
+      "limits": [
+        "Independent public HTML adapter, not an official StartupMap API or personal account connection. No private API, cookies, scripts, action links or profile operations.",
+        "Native sitemap directories and whole unfiltered city role lists only. Company pages retain native role IDs and public company facts. City duplicates remain separate occurrences.",
+        "JSON-LD may contain fewer roles than primary HTML. Count reconciliation is local to the native page and does not prove a whole country, frozen historical window or complete provider database.",
+        "Full job descriptions and original publication dates are absent from these public pages. Read permitted employer originals separately. Portal city/headquarters labels are not verified worksites or hybrid eligibility.",
+        "Current robots checked before each fresh resource. Exact immutable sitemap continuation uses verified private bytes without network. Denials, limits, schema drift or count conflicts fail explicitly."
       ]
     }
   ]

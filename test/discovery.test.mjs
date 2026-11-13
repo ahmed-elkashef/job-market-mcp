@@ -65,7 +65,7 @@ test('audited student and directory routes retain their separate source gaps', a
   assert.ok(!ALLOWED.public_de.has('member_detail'));
   assert.ok(!ALLOWED.public_de.has('member_challenge'));
   const registry = await loadRegistry();
-  assert.equal(registry.sources.length, 101);
+  assert.equal(registry.sources.length, 102);
   for (const id of ['public_institutions','staffing']) {
     const source = registry.sources.find(row => row.id === id);
     assert.equal(source.status, 'research_required');

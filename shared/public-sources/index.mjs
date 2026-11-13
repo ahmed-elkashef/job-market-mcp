@@ -25,6 +25,7 @@ import {successfactorsTools,successfactors} from './successfactors.mjs';
 import {oracleTools,oracle} from './oracle.mjs';
 import {personioTools,personio} from './personio.mjs';
 import {rorTools,ror} from './ror.mjs';
+import {startupmapTools,startupmap} from './startupmap.mjs';
 const inventoryClient = new InventoryClient();
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.JOBFLOW_PUBLIC_JOBS_TIMEOUT_MS || 15000);
@@ -39,6 +40,7 @@ const server = new Server(
 );
 
 export const tools = [
+  ...startupmapTools,
   ...workdayTools,
   ...teamtailorTools,
   ...dvinciTools,
@@ -295,6 +297,10 @@ server.setRequestHandler(CallToolRequestSchema, request => callTool(request.para
 
 export async function callTool(name, args = {}) {
   try {
+    if(startupmapTools.some(tool=>tool.name===name)) {
+      const data=await startupmap(name,args);
+      return {...jsonContent(data),structuredContent:data,isError:data.status!=='ok'};
+    }
     if(rorTools.some(tool=>tool.name===name)) {
       const data=await ror(name,args);
       return {...jsonContent(data),structuredContent:data,isError:data.status!=='ok'};

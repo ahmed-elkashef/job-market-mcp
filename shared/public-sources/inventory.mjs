@@ -116,8 +116,14 @@ export function normalizeRecord(source, raw, board = null, feedUrl = null, local
     extras.description_context_limit = 'Personio XML excludes the separately configured About us section.';
   } else if (source === 'recruitee') {
     ({id,title,careers_url:url,description:html,created_at:date} = raw); id ??= raw.slug; company=board;
+    for (const field of ['description','requirements']) {
+      if (raw[field] != null && typeof raw[field] !== 'string') throw new SourceError(`Recruitee ${field} is not text; no full-body claim`, 'malformed_response');
+    }
+    html = [raw.description, raw.requirements].filter(value => typeof value === 'string' && value.trim()).join('\n\n');
     location=typeof raw.location === 'string' ? raw.location : [raw.location?.city,raw.location?.state,raw.location?.country].filter(Boolean).join(', ');
-    extras={board_id:board, employment_type:raw.kind ?? raw.employment_type ?? null};
+    extras={board_id:board, employment_type:raw.kind ?? raw.employment_type ?? null,
+      description_scope:'recruitee_native_description_and_requirements',
+      description_provider_fields:['description','requirements'].filter(field => typeof raw[field] === 'string' && raw[field].trim())};
   } else throw new SourceError('Unsupported source', 'invalid_argument');
   if (html != null && typeof html !== 'string') throw new SourceError('Description field is not text; no full-body claim', 'malformed_response');
   const dateBasis = {

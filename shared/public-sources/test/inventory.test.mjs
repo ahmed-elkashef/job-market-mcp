@@ -54,6 +54,22 @@ test('Personio locale variants retain one native identity and do not alter origi
 });
 const reply = (body, status=200, headers={}) => new Response(typeof body==='string'?body:JSON.stringify(body),{status,headers});
 const row = i => ({slug:`synthetic-${i}`,title:'Synthetic example',company_name:'Example',description:'<p>Full &amp; unchanged</p>',created_at:1700000000});
+test('Recruitee retains separate requirements and benefits in normalized and offline detail bodies', async () => {
+  const raw={id:17,title:'Synthetic lead',careers_url:'https://example.recruitee.com/o/lead',description:'<p>Own the platform.</p>',requirements:'<p>German C2 required.</p><p>Hybrid work.</p>'};
+  const client=new InventoryClient({fetchImpl:async()=>reply({offers:[raw]})});
+  const page=await client.inventory({source:'recruitee',subdomain:'example'});
+  const job=client.detail({snapshot_id:page.snapshot_id,source_id:'17'}).job;
+  assert.equal(job.description,'Own the platform.\n\nGerman C2 required.\nHybrid work.');
+  assert.deepEqual(job.description_provider_fields,['description','requirements']);
+  assert.deepEqual(job.source_data,raw);
+  assert.equal(page.jobs[0].description,undefined);
+  assert.equal(page.jobs[0].source_data.requirements,undefined);
+});
+test('Recruitee requirements-only records survive and malformed sections fail closed',()=>{
+  assert.equal(normalizeRecord('recruitee',{id:17,requirements:'<p>Required proof.</p>'},'example').description,'Required proof.');
+  for(const raw of [{id:17,description:[]},{id:17,description:'Duties',requirements:{text:'Must not silently disappear'}}])
+    assert.throws(()=>normalizeRecord('recruitee',raw,'example'),error=>error.code==='malformed_response');
+});
 test('325 native rows survive; continuation above former page25 cap is exact',async()=>{
   let requests=0;const client=new InventoryClient({fetchImpl:async url=>{requests++;assert.match(url,/page=26/);return reply({data:Array.from({length:325},(_,i)=>row(i)),links:{next:'https://www.arbeitnow.com/api/job-board-api?page=27'}});}});
   const data=await client.inventory({source:'arbeitnow',page:26});assert.equal(data.count,325);assert.equal(data.raw_count,325);assert.deepEqual(data.pagination.next,{page:27});assert.equal(data.jobs[0].description,undefined);

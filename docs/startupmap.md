@@ -69,6 +69,11 @@ are not original publication time, country/week completeness, an actual job
 worksite or applicant eligibility. Every response keeps these limits explicit.
 Nothing applies, contacts an employer, saves a job or changes a profile.
 
+When enriching a discovered role through the shared Recruitee reader, the full
+body includes both native `description` and `requirements`. The latter can also
+contain benefits and work arrangements. Preserve those sections and the raw
+offer; reading only the introduction is not a full vacancy review.
+
 Tests are synthetic and offline:
 
 ```sh

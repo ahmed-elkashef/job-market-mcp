@@ -116,7 +116,7 @@ export function parsePublicPage(text, url, kind) {
   const canonicals=[...text.matchAll(/<link\b[^>]*rel="canonical"[^>]*href="([^"]+)"[^>]*>/g)];
   if (canonicals.length!==1 || canonicals[0][1]!==url) throw new Error('public_canonical_mismatch');
   const section=new XMLParser({ignoreAttributes:false,parseTagValue:false,trimValues:true}).parse(fragment).section;
-  const heading=String(nodeText(section.h1)).trim();
+  const heading=plainText(nodeText(section.h1));
   if (!heading) throw new Error('public_heading_missing');
   const schemas=[];
   for (const m of text.matchAll(/<script\b[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)) {
@@ -140,7 +140,8 @@ export function parsePublicPage(text, url, kind) {
         description_status:'not_in_public_html',original_publication:null};
     }
     if (links.length!==1) throw new Error('native_role_link_structure_changed');
-    const label=String(nodeText(links[0])).trim(), href=links[0]['@_href'];
+    const protectedPlaceholder=links[0]?.span?.['@_class']==='__cf_email__';
+    const label=plainText(protectedPlaceholder?nodeText(links[0].span):nodeText(links[0])), href=links[0]['@_href'];
     if (!label || typeof href!=='string') throw new Error('native_role_metadata_missing');
     const target=new URL(href,ORIGIN);let id=null;
     if (kind==='city') resourceUrl(target.href,'company');
@@ -151,6 +152,7 @@ export function parsePublicPage(text, url, kind) {
       if (!/^[\p{L}\p{M}\p{N}_.-]{1,512}$/u.test(id)) throw new Error('invalid_native_role_id');
     }
     return {occurrence:index+1,native_label:label,native_role_id:id,
+      native_label_is_protected_placeholder:protectedPlaceholder,
       company_url:kind==='city'?target.href:url,
       unfetched_action_reference:kind==='company'?target.href:null,
       location_label:row.span?String(nodeText(row.span)):null,
@@ -159,7 +161,7 @@ export function parsePublicPage(text, url, kind) {
   // Preserve mismatches as a source limitation, never an empty/complete inventory.
   if (roles.length!==reportedCount) throw new Error(`native_role_count_mismatch_${reportedCount}_${roles.length}`);
   // The site-wide publisher Organization is separate from this page's company.
-  const organization=schemas.filter(x=>x?.['@type']==='Organization' && x.name===heading);
+  const organization=schemas.filter(x=>x?.['@type']==='Organization' && x.name===heading && x.location?.address?.addressCountry);
   if (kind==='company' && organization.length!==1) throw new Error('company_identity_mismatch');
   return {kind:kind==='city'?'city_role_metadata':'company_and_role_metadata',url,heading,
     full_public_text:plainText(fragment),public_section_sha256:digest(fragment),

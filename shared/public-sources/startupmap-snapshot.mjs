@@ -16,7 +16,7 @@ export const startupmapSnapshotTools=[
  {name:'startupmap_snapshot_begin',annotations,inputSchema:obj({country:{type:'string',enum:['DE']}},['country']),
   description:'Freeze the complete native public company sitemap plus the Germany country map in a new immutable snapshot. To avoid losing foreign-headquartered employers with German roles, all company partitions are retained before geography review. Requires private JOB_MARKET_CAPTURE_DIR. Starts no monitor, account operation or application.'},
  {name:'startupmap_snapshot_collect',annotations,inputSchema:obj({snapshot_id:snapshotId,offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:10,default:5}},['snapshot_id','offset']),
-  description:'Read one bounded sequential batch of public company partitions from an exact frozen StartupMap snapshot. Cache every full company page projection and all native role metadata; reconcile advertised counts and explicit empty states. Completed batches replay without provider reads. Failed partitions remain explicit and independent ones continue. Never imply that job descriptions or original dates were obtained.'},
+  description:'Read one bounded batch of public company partitions from an exact frozen snapshot, with at most two public reads in flight and one fresh robots policy per batch. Cache every full company projection and native role metadata; reconcile counts and explicit empty states. Completed batches replay offline. Failed partitions remain explicit. Never imply full job descriptions or original dates.'},
  {name:'startupmap_snapshot_retry',annotations,inputSchema:obj({snapshot_id:snapshotId,company_index:{type:'integer',minimum:0}},['snapshot_id','company_index']),
   description:'Retry one previously failed public company partition in the same snapshot under current robots and source policy. No arbitrary URL, fallback endpoint, automatic retry loop or private API.'},
  {name:'startupmap_snapshot_read',annotations,inputSchema:obj({snapshot_id:snapshotId,kind:{type:'string',enum:['summary','companies','roles']},view_sha256:{type:'string',pattern:'^[a-f0-9]{64}$'},offset:{type:'integer',minimum:0,default:0},limit:{type:'integer',minimum:1,maximum:200,default:100}},['snapshot_id','kind']),
@@ -124,13 +124,20 @@ export async function startupmapSnapshot(name,args={}, {fetchImpl=fetch,cacheDir
   lock=await open(path.join(dir,'collect.lock'),'wx',0o600);
   const latest=(await load(dir)).manifest;
   if(latest.offset!==m.offset||recordDigest(latest)!==recordDigest(m)||JSON.stringify(latest.errors)!==JSON.stringify(m.errors))throw Error('snapshot_changed_before_collection_lock_retry_exact_offset');
-  const outcomes=[];
-  for(let i=index;i<Math.min(index+limit,companies.length);i++){
-   try{const ref=await captureOne({dir,m,companies,index:i,fetchImpl});outcomes.push({index:i,status:'ok',role_count:ref.returned_role_count});}
-   catch(e){m.errors[i]={index:i,company_url:companies[i].url,error:e.message,http_status:e.http_status??null,retry_after:e.retry_after??null};outcomes.push({index:i,status:'source_limited',...m.errors[i]});}
-   if(name==='startupmap_snapshot_collect')m.offset=i+1;
+  const outcomes=[];let robotsResponse;
+  const batchFetch=async(url,options)=>{
+   if(url!==ORIGIN+'/robots.txt')return fetchImpl(url,options);
+   robotsResponse??=Promise.resolve(fetchImpl(url,options));return (await robotsResponse).clone();
+  };
+  for(let i=index;i<Math.min(index+limit,companies.length);i+=2){
+   const indices=Array.from({length:Math.min(2,index+limit-i,companies.length-i)},(_,j)=>i+j);
+   const pair=await Promise.all(indices.map(async n=>{
+    try{const ref=await captureOne({dir,m,companies,index:n,fetchImpl:batchFetch});return {index:n,status:'ok',role_count:ref.returned_role_count};}
+    catch(e){m.errors[n]={index:n,company_url:companies[n].url,error:e.message,http_status:e.http_status??null,retry_after:e.retry_after??null};return {index:n,status:'source_limited',...m.errors[n]};}
+   }));outcomes.push(...pair);
+   if(name==='startupmap_snapshot_collect')m.offset=indices.at(-1)+1;
    m.capture_updated_at=new Date().toISOString();await atomic(path.join(dir,'manifest.json'),m);
-   if(outcomes.at(-1).http_status===429)break;
+   if(pair.some(x=>x.http_status===429))break;
   }
   return {...base,status:outcomes.some(x=>x.status==='source_limited')?'source_limited':'ok',kind:'public_company_collection',...summary(m),outcomes};
  }catch(e){return {...base,status:'source_limited',returned_count:null,error:e.code==='EEXIST'?'snapshot_collection_busy':e.message};}

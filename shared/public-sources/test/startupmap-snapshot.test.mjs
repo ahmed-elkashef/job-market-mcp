@@ -30,7 +30,7 @@ test('one failed partition does not hide independent supply; explicit retry reso
  assert.equal((await call('startupmap_snapshot_retry',{snapshot_id:b.snapshot_id,company_index:0},{cacheDir,fetchImpl:()=>assert.fail()})).status,'source_limited');
 }));
 test('rate limiting stops the batch with its exact continuation and retry-after',()=>fixture(async cacheDir=>{
- const b=await begin(cacheDir);const calls=[];const r=await call('startupmap_snapshot_collect',{snapshot_id:b.snapshot_id,offset:0,limit:2},{cacheDir,fetchImpl:fetcher({[origin+'/startup/one_de']:new Response('limited',{status:429,headers:{'retry-after':'60'}})},calls)});assert.equal(r.collected_partitions,1);assert.equal(r.failed_partitions[0].retry_after,'60');assert.ok(!calls.includes(origin+'/startup/two_fr'));
+ const b=await begin(cacheDir);const calls=[];const r=await call('startupmap_snapshot_collect',{snapshot_id:b.snapshot_id,offset:0,limit:2},{cacheDir,fetchImpl:fetcher({[origin+'/startup/one_de']:new Response('limited',{status:429,headers:{'retry-after':'60'}})},calls)});assert.equal(r.collected_partitions,2);assert.equal(r.failed_partitions[0].retry_after,'60');assert.equal(calls.filter(u=>u.endsWith('/robots.txt')).length,1);assert.equal(r.outcomes.length,2);
 }));
 test('immutable view continuation survives later retries and requires its digest',()=>fixture(async cacheDir=>{
  const b=await begin(cacheDir);await call('startupmap_snapshot_collect',{snapshot_id:b.snapshot_id,offset:0,limit:2},{cacheDir,fetchImpl:fetcher({[origin+'/startup/one_de']:new Response('no',{status:500})})});
